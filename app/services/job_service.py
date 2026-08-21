@@ -133,19 +133,54 @@ class JobService:
                     claimed.append(fresh)
         return claimed
 
-    def mark_failed(self, db: Session, job: PublishJob, message: str) -> PublishJob:
+    def mark_failed(
+        self,
+        db: Session,
+        job: PublishJob,
+        message: str,
+        *,
+        error_code: str | None = None,
+    ) -> PublishJob:
+        from app.constants import NON_RETRYABLE_FAILURES
+
         job.error_message = message
-        job.retry_count += 1
-        if job.retry_count >= job.max_retries:
-            job.status = JobStatus.DEAD.value
+        payload = {"message": message}
+        if error_code:
+            payload["error_code"] = error_code
+        job.result_json = json.dumps(payload)
+
+        if error_code in NON_RETRYABLE_FAILURES:
+            job.status = JobStatus.FAILED.value
             job.completed_at = utcnow()
         else:
-            job.status = JobStatus.RETRY.value
-            backoff_idx = min(job.retry_count - 1, len(RETRY_BACKOFF_SECONDS) - 1)
-            job.scheduled_at = utcnow() + timedelta(seconds=RETRY_BACKOFF_SECONDS[backoff_idx])
+            job.retry_count += 1
+            if job.retry_count >= job.max_retries:
+                job.status = JobStatus.DEAD.value
+                job.completed_at = utcnow()
+            else:
+                job.status = JobStatus.RETRY.value
+                backoff_idx = min(job.retry_count - 1, len(RETRY_BACKOFF_SECONDS) - 1)
+                job.scheduled_at = utcnow() + timedelta(seconds=RETRY_BACKOFF_SECONDS[backoff_idx])
         db.commit()
         db.refresh(job)
         return job
+
+    def recover_stale_jobs(self, db: Session, *, minutes: int = 10) -> int:
+        cutoff = utcnow() - timedelta(minutes=minutes)
+        rows = (
+            db.query(PublishJob)
+            .filter(PublishJob.status.in_([JobStatus.CLAIMED.value, JobStatus.EXECUTING.value]))
+            .filter(PublishJob.started_at.isnot(None))
+            .filter(PublishJob.started_at <= cutoff)
+            .all()
+        )
+        for job in rows:
+            job.status = JobStatus.RETRY.value
+            job.error_message = "Stale job recovered after worker timeout"
+            job.scheduled_at = utcnow()
+        if rows:
+            db.commit()
+        return len(rows)
 
     def finalize_success(self, db: Session, job: PublishJob, result: dict) -> PublishJob:
         job.status = JobStatus.SUCCESS.value

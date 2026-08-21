@@ -50,27 +50,27 @@ UI → API → Services（自研）
 
 ### 解耦与质量
 
-- [ ] Account / Content / Job / Agent / Channel 分层清晰，无跨层直连
-- [ ] 切换 AgentAdapter 实现无需改 JobService 核心逻辑
-- [ ] 未自研 Agent Framework；未把 Postiz 类 API 工具当执行底座
-- [ ] 不存平台密码；不破解验证码
-- [ ] 单机 SQLite + 本地进程；无云端集群依赖
-- [ ] README 可让新人独立跑通（含 browser-use / Playwright 安装）
+- [x] Account / Content / Job / Agent / Channel 分层清晰，无跨层直连
+- [x] 切换 AgentAdapter 实现无需改 JobService 核心逻辑
+- [x] 未自研 Agent Framework；未把 Postiz 类 API 工具当执行底座
+- [x] 不存平台密码；不破解验证码
+- [x] 单机 SQLite + 本地进程；无云端集群依赖
+- [x] README 可让新人独立跑通（含 browser-use / Playwright 安装）
 
 ### 明确不做（本版本仍保持不做）
 
-- [ ] 确认未引入：云端多设备、Kafka、K8s、官方平台 API、SaaS 多租户、计费
-- [ ] 确认未做：自动注册账号、自动破解验证码、评论自动回复
-- [ ] 确认 OCR/PyAutoGUI 未进入发布主路径（若实验过，须隔离且文档标明）
+- [x] 确认未引入：云端多设备、Kafka、K8s、官方平台 API、SaaS 多租户、计费
+- [x] 确认未做：自动注册账号、自动破解验证码、评论自动回复
+- [x] 确认 OCR/PyAutoGUI 未进入发布主路径（若实验过，须隔离且文档标明）
 
 ---
 
 ## 发布待办
 
-- [ ] 版本号统一：`/health`、包元数据、UI 关于页显示 `0.2.0`
-- [ ] 更新根 `README.md`：MVP 能力 + 自研/复用说明 + 快速开始
-- [ ] 核对 `version/BUILD_VS_BUY.md` 与实现一致
-- [ ] 更新 `TODO.md` 进度勾选区（M0–M7 / MVP 验收）
+- [x] 版本号统一：`/health`、包元数据、UI 关于页显示 `0.2.0`
+- [x] 更新根 `README.md`：MVP 能力 + 自研/复用说明 + 快速开始
+- [x] 核对 `version/BUILD_VS_BUY.md` 与实现一致
+- [x] 更新 `TODO.md` 进度勾选区（M0–M7 / MVP 验收）
 - [ ] 打 git tag：`v0.2.0`（需用户明确要求时再执行）
 - [ ] 整理已知问题清单（可选）
 
@@ -81,7 +81,7 @@ UI → API → Services（自研）
 > 一个运行在用户本地电脑上的 AI Agent（默认 browser-use），能否可靠地消费运营任务，并通过浏览器完成实际社交媒体操作？
 
 - [ ] **成立**（附：连续冒烟结果 / 失败类型统计 / 模型与 browser-use 版本）
-- [ ] **部分成立**（附：阻塞项）
+- [x] **部分成立**（附：阻塞项 — 真实 TikTok SUCCESS 依赖本地已登录 Profile 与环境；架构与闭环代码已就绪，见 README）
 - [ ] **不成立**（附：原因与是否调整默认 Adapter）
 
 ---

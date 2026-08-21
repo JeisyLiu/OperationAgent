@@ -2,12 +2,13 @@
 
 Local AI social media operator — runs entirely on your machine.
 
-This is a **single-machine** app: one local process, SQLite database under `data/`, browser profiles, and optional browser-use Agent on disk. It is **not** a cloud backend.
+This is a **single-machine** app: one local process, SQLite database under `data/`, browser profiles, and browser-use Agent on disk. It is **not** a cloud backend.
 
 ## Requirements
 
 - Python 3.11+
 - Windows / macOS / Linux
+- OpenAI-compatible API key (for browser-use tasks)
 
 ## Quick start
 
@@ -17,24 +18,43 @@ python -m venv .venv
 pip install -e ".[dev]"
 python scripts/init_db.py
 copy .env.example .env
+playwright install chromium
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-## Browser dependencies (0.1.3+)
+Open **http://127.0.0.1:8000/** for the local UI.
 
-```bash
-playwright install chromium
-```
+## Environment
 
-## browser-use (0.1.6+, optional real Agent)
-
-Set in `.env`:
+`.env` example:
 
 ```text
+APP_DATA_DIR=./data
 AGENT_ADAPTER=browser_use
 ```
 
-Install browsers as above. See [version/BUILD_VS_BUY.md](./version/BUILD_VS_BUY.md).
+Use `AGENT_ADAPTER=mock` for queue testing without a real browser agent.
+
+## First-time publish (no code)
+
+1. **Settings** — enter AI provider, model, and API key → **Test connection**.
+2. **Accounts** — add a TikTok account → **Open profile** → log in manually (complete any captcha here) → **Mark active**.
+3. **Content** — upload a video → create a TikTok variant with title/caption.
+4. **Queue** — schedule a job with the variant ID and active account ID.
+5. Wait for **SUCCESS** on Dashboard or Queue. View screenshots under **History**.
+
+Login and captcha happen only during step 2. Publishing runs unattended.
+
+## Smoke script
+
+```bash
+python scripts/smoke_publish.py --variant-id 1 --account-id 1
+```
+
+## Worker controls
+
+- UI footer: **Pause** / **Stop** for the current agent run
+- API: `GET /api/worker/status`, `POST /api/worker/pause`, `POST /api/worker/stop`
 
 ## Verify
 
@@ -42,7 +62,7 @@ Install browsers as above. See [version/BUILD_VS_BUY.md](./version/BUILD_VS_BUY.
 curl http://127.0.0.1:8000/health
 ```
 
-Expected: `{"status":"ok","version":"0.1.6"}`
+Expected: `{"status":"ok","version":"0.2.0"}`
 
 ## Key APIs
 
@@ -52,6 +72,7 @@ Expected: `{"status":"ok","version":"0.1.6"}`
 | Accounts | `GET/POST /api/accounts`, `POST .../open-profile`, `.../mark-active` |
 | Content | `GET/POST /api/content/assets`, upload, variants |
 | Jobs | `GET/POST /api/jobs`, cancel/retry/logs |
+| Worker | `GET /api/worker/status`, pause/stop |
 
 ## Local data layout
 
@@ -63,6 +84,22 @@ data/
 └── execution/
 ```
 
+## Architecture
+
+```text
+UI → FastAPI /api/* → services → Channel.publish → AgentAdapter → Playwright/browser-use
+```
+
+See [version/BUILD_VS_BUY.md](./version/BUILD_VS_BUY.md) for build vs reuse boundaries.
+
+## MVP 0.2.0 hypothesis
+
+**Hypothesis:** A local browser-use operator can publish to TikTok from persisted Playwright profiles with acceptable reliability, without official APIs or a custom agent framework.
+
+**Conclusion (MVP):** **Partially validated** — queue, profiles, Channel orchestration, failure classification, UI, and Pause/Stop are in place; real TikTok SUCCESS depends on your environment (logged-in profile, stable UI, model quality). Re-run `scripts/smoke_publish.py` locally to confirm on your machine.
+
+We do **not** bypass captchas during publish. If login expires, re-open the profile and mark active, then retry the job.
+
 ## Documentation
 
 | Document | Purpose |
@@ -70,7 +107,8 @@ data/
 | [TODO.md](./TODO.md) | Product requirements and implementation plan |
 | [version/README.md](./version/README.md) | Version roadmap |
 | [version/BUILD_VS_BUY.md](./version/BUILD_VS_BUY.md) | Build vs reuse |
+| [version/0.2.0](./version/0.2.0) | MVP freeze checklist |
 
 ## Current version
 
-**v0.1.6** — Settings, accounts/profiles, content variants, mock job queue, BrowserUseAdapter glue.
+**v0.2.0** — TikTok Channel publish loop, static UI, worker controls, MVP freeze.

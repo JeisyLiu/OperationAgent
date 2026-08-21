@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OperationAgent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>OperationAgent</h1>
+      <p class="version" id="app-version">v0.2.0</p>
+      <nav>
+        <button data-view="dashboard" class="nav active">Dashboard</button>
+        <button data-view="settings" class="nav">Settings</button>
+        <button data-view="accounts" class="nav">Accounts</button>
+        <button data-view="content" class="nav">Content</button>
+        <button data-view="queue" class="nav">Queue</button>
+        <button data-view="history" class="nav">History</button>
+      </nav>
+    </aside>
+
+    <main>
+      <section id="view-dashboard" class="view active">
+        <h2>Dashboard</h2>
+        <div class="stats" id="dashboard-stats"></div>
+        <h3>Recent jobs</h3>
+        <div id="dashboard-jobs" class="table"></div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <h2>AI Settings</h2>
+        <form id="settings-form">
+          <label>Provider <input name="provider" value="openai" /></label>
+          <label>Base URL <input name="base_url" placeholder="https://api.openai.com/v1" /></label>
+          <label>Model <input name="model" value="gpt-4o-mini" /></label>
+          <label>API Key <input name="api_key" type="password" autocomplete="off" /></label>
+          <div class="actions">
+            <button type="submit">Save</button>
+            <button type="button" id="test-ai">Test connection</button>
+          </div>
+        </form>
+        <pre id="settings-result"></pre>
+      </section>
+
+      <section id="view-accounts" class="view">
+        <h2>Accounts</h2>
+        <form id="account-form" class="inline-form">
+          <input name="platform" value="tiktok" />
+          <input name="account_name" placeholder="Account name" required />
+          <button type="submit">Add account</button>
+        </form>
+        <div id="accounts-list" class="table"></div>
+      </section>
+
+      <section id="view-content" class="view">
+        <h2>Content</h2>
+        <form id="asset-form" class="inline-form">
+          <input name="title" placeholder="Asset title" required />
+          <input name="file" type="file" accept="video/*" required />
+          <button type="submit">Upload video</button>
+        </form>
+        <form id="variant-form" class="inline-form">
+          <input name="asset_id" type="number" placeholder="Asset ID" required />
+          <input name="title" placeholder="Variant title" />
+          <input name="caption" placeholder="Caption" />
+          <button type="submit">Create TikTok variant</button>
+        </form>
+        <div id="content-list" class="table"></div>
+      </section>
+
+      <section id="view-queue" class="view">
+        <h2>Queue</h2>
+        <form id="job-form" class="inline-form">
+          <input name="variant_id" type="number" placeholder="Variant ID" required />
+          <input name="account_id" type="number" placeholder="Account ID" required />
+          <button type="submit">Schedule job now</button>
+        </form>
+        <div id="queue-list" class="table"></div>
+      </section>
+
+      <section id="view-history" class="view">
+        <h2>History</h2>
+        <form class="inline-form">
+          <input id="history-job-id" type="number" placeholder="Job ID" />
+          <button type="button" id="load-history">Load logs</button>
+        </form>
+        <div id="history-list" class="table"></div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="status-bar">
+    <span id="worker-status">Worker: …</span>
+    <span id="current-job">Current job: none</span>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-stop">Stop</button>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -43,7 +43,7 @@ class MockAgentAdapter(AgentAdapter):
             status=AgentStatus.SUCCESS,
             message="Mock execution completed",
             screenshot_paths=screenshots,
-            data={"mock": True},
+            data={"status": "SUCCESS", "mock": True},
         )
 
     async def pause(self) -> None:

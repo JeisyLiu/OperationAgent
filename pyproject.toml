@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "operation-agent"
-version = "0.1.6"
+version = "0.2.0"
 description = "Local AI social media operator — single-machine MVP"
 readme = "README.md"
 requires-python = ">=3.11"

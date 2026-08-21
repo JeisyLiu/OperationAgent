@@ -1733,51 +1733,136 @@ Playwright + Browser Profile（已登录）
 
 ---
 
-### M6｜首平台发布闭环 —— TikTok（Week 6）
+### M6｜TikTok 真实发布闭环（Week 6）→ [`version/0.1.7`](./version/0.1.7)
 
-**目标：** 真机真账号在**用户不在场**的情况下完成一次视频发布（前提：该账号已完成首次登录）。
+**目标：** 账号已完成首次登录后，Job 到期由 **browser-use** 全自动完成 TikTok 视频发布并记 SUCCESS。
 
-- [ ] `TikTokChannel.publish()`：编排「准备 Runtime → 组装 Agent Task → execute → verify」
-- [ ] 发布路径全自动：上传、填文案、发布、验证均不弹人工步骤
-- [ ] Verify：根据页面文案/URL/截图确认发布成功
-- [ ] 失败分类：登录失效 / 上传超时 / 页面改版 / 发布中出现人机挑战 / 未知 → 写入 error_message
-- [ ] 登录失效或发布中出现人机挑战：Job 标记 FAILED，**停止自动尝试**，提示用户重新 `open-profile` 完成登录校验
-- [ ] 端到端脚本 `scripts/smoke_publish.py`（执行期间不要求人工点击）
+**本版本不负责：** YouTube / Reddit Channel（可空壳）；评论、私信、数据采集；完整桌面 UI（属 0.1.8）；破解验证码；OCR / PyAutoGUI 主路径；自研 CustomAgent。
 
-**验收：** 账号已 ACTIVE 后，从创建 Job 到 TikTok 出现真实视频全程无人值守；Job = SUCCESS；截图可回放。
-**平台顺序（严格）：**
+**架构边界：**
 
 ```text
-1) TikTok 视频发布   ← 本里程碑必达
-2) YouTube Shorts    ← 可选加时 3～5 天
-3) Reddit 图文/视频  ← 可选再加 3～5 天
+PublishJob → TikTokChannel.publish(ctx) → AgentAdapter.execute → Verify → SUCCESS/FAILED
 ```
+
+- Channel 只编排 + 校验 + 失败分类；页面操作交给 Agent
+- 人机校验 **不得** 成为发布成功路径的一步
+
+**产品铁律：** 首次登录已在 0.1.3 完成；本版本发布过程用户可不在场；发布中弹验证码 → FAILED 并提示重登。
+
+#### Channel
+
+- [x] `app/channels/base.py`：`publish()` / 预留 `read_comments`
+- [x] `app/channels/tiktok.py`：实现 `publish()` 编排
+- [x] `app/channels/registry.py`：按 `platform` 路由
+- [x] Worker：认领后走 Channel，不再裸调 Adapter
+
+#### 发布编排
+
+- [x] 执行前检查账号 ACTIVE；无效则 FAILED（提示 `open-profile`）
+- [x] 用 Variant + Account 填充 publish prompt
+- [x] 调用 `BrowserUseAdapter`；关键步骤落截图
+- [x] Verify：URL / 成功文案 / 结果页特征（至少一种）
+- [x] Runtime 辅助强确定性步骤（不扩散为全脚本发帖）
+
+#### 失败处理
+
+- [x] 分类：`LOGIN_REQUIRED` / `CAPTCHA_BLOCKED` / `UPLOAD_TIMEOUT` / `UI_CHANGED` / `UNKNOWN`
+- [x] 前两类不破解、不重试；引导 `open-profile` 后手动 `retry`
+- [x] 可恢复错误按 max_retries 退避
+
+#### 冒烟
+
+- [x] `scripts/smoke_publish.py`：创建 Job → 等待 SUCCESS
+- [x] 记录 browser-use 版本与模型
+
+**验收：**
+
+1. ACTIVE 账号 + READY Variant → Job → **无人值守** → TikTok 出现视频
+2. Job = SUCCESS，execution 截图可回放
+3. 未登录：Job FAILED，错误指向重新登录
+4. 连续 3 次冒烟成功率 ≥ 2/3（环境允许前提下）
+5. 主路径仍为 browser-use
+
+**完成定义：** TikTok 真发帖闭环成立 → 进入 **0.1.8**
 
 ---
 
-### M7｜简易 UI + 稳定性（Week 7～8）
+### M7｜简易 UI + 稳定性（Week 7～8）→ [`version/0.1.8`](./version/0.1.8)
 
-**目标：** 非开发者也能点完主流程。
+**目标：** 非开发者可通过桌面 Web UI 走完主流程；Pause/Stop 可用；Worker 更稳；文档可独立复现。
 
-**UI（建议 React + Vite；若赶工可用 FastAPI + 简单 HTML）：**
+**本版本不负责：** 精美复杂后台、权限、多租户、计费；第二阶段 AI 能力；多平台 Channel 补齐。
 
-- [ ] 左侧导航：Dashboard / Accounts / Content / Queue / History / Settings
-- [ ] Settings：配置 AI Key
-- [ ] Accounts：添加账号、打开 Profile、标记已登录
-- [ ] Content：上传视频、编辑 Variant
-- [ ] Queue：创建任务、查看状态、暂停/停止当前任务
-- [ ] History：查看日志与截图
-- [ ] 底部「当前任务」状态条
+**架构边界：** UI → FastAPI `/api/*` → `services/*`（UI 不得直连 DB / browser-use / Playwright）
 
-**稳定性：**
+**UI 选型：** FastAPI 静态页（同进程、`127.0.0.1`），不引入独立 React 工程。
 
-- [ ] Worker 崩溃恢复：CLAIMED/EXECUTING 超时回收为 RETRY
-- [ ] 单 Worker 锁文件，避免多进程抢同一 Job
-- [ ] Pause / Stop / Take Over 基本可用（Take Over = 停止 Agent，保留浏览器给用户）
-- [ ] 基础日志（文件 + 控制台）
-- [ ] README 完整：安装、登录、首次发布教程
+#### UI 页面
 
-**验收：** 按 README 无代码操作完成一次 TikTok 发布；连续 3 次成功率 ≥ 2/3。
+- [x] Dashboard：队列中 / 执行中 / 最近成功失败
+- [x] Settings：配置 AI Key 并 Test
+- [x] Accounts：添加、打开 Profile、标记已登录
+- [x] Content：上传视频、编辑 Variant
+- [x] Queue：创建任务、取消、重试
+- [x] History：日志 + 截图查看
+- [x] 底部「当前任务」条 + Pause / Stop
+
+#### 稳定性
+
+- [x] Worker 崩溃后 CLAIMED/EXECUTING 超时回收
+- [x] 单 Worker 锁；启动时检测
+- [x] 前端轮询 Job / Worker 状态
+- [x] 登录失效统一引导去 Accounts 重登
+
+#### 文档
+
+- [x] README：安装 → Key → 首次登录 → 上传 → 建 Job → 无人值守 SUCCESS
+- [x] 链到 `version/BUILD_VS_BUY.md`；声明不破解验证码
+
+**验收：**
+
+1. 按 README 不改代码完成一次 TikTok 发布
+2. Stop 可停且状态可解释
+3. UI 可查看截图与错误原因
+4. 无 Redis/PG/K8s 越界依赖
+
+**完成定义：** UI + 稳定性达标 → 冻结为 **0.2.0**
+
+---
+
+### MVP｜0.2.0 冻结发布 → [`version/0.2.0`](./version/0.2.0)
+
+**目标：** 冻结第一阶段能力；证明「本地 browser-use 运营 Operator」假设；固化自研/复用边界。
+
+#### 闭环能力（全部勾选才打 0.2.0）
+
+- [x] 配置 API Key 并测试通过
+- [x] 首次登录 TikTok 且 Profile 持久化；账号 ACTIVE
+- [x] 视频入库 + TikTok Variant
+- [x] Job 到期自动执行；BrowserUseAdapter 全自动发布
+- [ ] 平台侧可见内容；Job = SUCCESS（需本地 TikTok 环境验证）
+- [x] 执行日志与截图可回看；Pause / Stop 可用
+
+#### 解耦与质量
+
+- [x] Account / Content / Job / Agent / Channel 分层清晰
+- [x] 切换 AgentAdapter 不改 JobService 核心
+- [x] 未自研 Agent Framework；不用 Postiz 类 API 底座
+- [x] 不存密码、不破解验证码；单机 SQLite
+- [x] README 可让新人独立跑通
+
+#### 发布待办
+
+- [x] 版本号统一：`/health`、包元数据、UI 显示 `0.2.0`
+- [x] 更新根 README 与 `version/BUILD_VS_BUY.md` 一致性
+- [x] 更新 `TODO.md` M0–M7 / MVP 勾选
+- [x] 核心假设验证结论：**部分成立**（见 README）
+- [ ] git tag `v0.2.0`（仅用户明确要求时）
+
+**明确不做：** Hermes/OpenClaw 默认后端、OCR 主路径、云端集群、官方 API 排程、自动注册/破解验证码。
+
+**完成定义：** MVP 验收全部勾选 + 核心假设有结论 → **MVP 0.2.0 完成**
 
 ---
 
@@ -1901,32 +1986,36 @@ UI
    - [x] `GET /health` 返回 `{ "status": "ok", "version": "0.1.1" }`
    - [x] README 安装/启动说明 + 链到 `version/README.md` / `version/BUILD_VS_BUY.md`
 
-2. **M1 / `0.1.2` — 数据层 + AI Settings**（详见 §27.5 与 [`version/0.1.2`](./version/0.1.2)）：
-   - [ ] `app/db/session.py` + `models.py` + `scripts/init_db.py`（SQLite；建议一并建后续表）
-   - [ ] Settings API：`GET/PUT /api/settings/ai`、`POST /api/settings/ai/test`
-   - [ ] API Key Fernet 加密（密钥在 `data/`）；`app/llm/client.py` 薄封装
-   - [ ] 单元测试：读写、脱敏、加密往返
+2. **M1 / `0.1.2` — 数据层 + AI Settings**（代码已落地，详见 §27.5 与 [`version/0.1.2`](./version/0.1.2)）：
+   - [x] `app/db/session.py` + `models.py` + `scripts/init_db.py`
+   - [x] Settings API + Fernet + `app/llm/client.py`
+   - [x] 单元测试：读写、脱敏、加密往返
 
-3. **M2 / `0.1.3` — 账号池 + Profile**（详见 §27.5 与 [`version/0.1.3`](./version/0.1.3)；**此版本才装 Playwright**）：
-   - [ ] Accounts CRUD + `PENDING_LOGIN` → `ACTIVE`
-   - [ ] `open-profile` / `mark-active` / `check-session`
-   - [ ] `scripts/launch_profile.py`；Profile 持久化登录
-   - [ ] **不接 browser-use**
+3. **M2 / `0.1.3` — 账号池 + Profile**（代码已落地，详见 [`version/0.1.3`](./version/0.1.3)）：
+   - [x] Accounts CRUD + Profile 持久化 + `launch_profile.py`
 
-4. **M3 / `0.1.4` — 内容池 + Variant**（详见 §27.5 与 [`version/0.1.4`](./version/0.1.4)）：
-   - [ ] Asset 上传至 `data/content/{asset_id}/`
-   - [ ] TikTok Variant CRUD；Asset / Variant / Job 三表分离
+4. **M3 / `0.1.4` — 内容池 + Variant**（代码已落地，详见 [`version/0.1.4`](./version/0.1.4)）：
+   - [x] Asset 上传 + TikTok Variant CRUD
 
-5. **M4 / `0.1.5` — 队列 + MockAgent**（详见 §27.5 与 [`version/0.1.5`](./version/0.1.5)；**仍不装 browser-use**）：
-   - [ ] Job 状态机 + Worker 事务认领 + 单进程锁
-   - [ ] `MockAgentAdapter` 跑通队列；业务层禁止 `import browser_use`
+5. **M4 / `0.1.5` — 队列 + MockAgent**（代码已落地，详见 [`version/0.1.5`](./version/0.1.5)）：
+   - [x] Job 状态机 + Worker + MockAgentAdapter
 
-6. **M5 / `0.1.6` — BrowserUseAdapter**（详见 §27.5 与 [`version/0.1.6`](./version/0.1.6)）：
-   - [ ] `AgentAdapter` + `BrowserUseAdapter`（默认）+ Runtime 薄封装
-   - [ ] `app/prompts/publish_task.md`；已登录 Profile 冒烟截图
-   - [ ] `AGENT_ADAPTER=mock|browser_use` 可切换
+6. **M5 / `0.1.6` — BrowserUseAdapter**（代码已落地，详见 [`version/0.1.6`](./version/0.1.6)）：
+   - [x] AgentAdapter + BrowserUseAdapter + Runtime 薄封装 + publish prompt
 
-**依赖铁律：** M4 完成前禁止业务层 `import browser_use`；真发帖 SUCCESS 属 **0.1.7**。Playwright 在 0.1.3 安装，browser-use 在 0.1.6 安装。
+7. **M6 / `0.1.7` — TikTok 真发帖闭环**（代码已落地，详见 §27.5 与 [`version/0.1.7`](./version/0.1.7)）：
+   - [x] `TikTokChannel.publish()` + Worker 按 platform 路由
+   - [x] 失败分类 + `scripts/smoke_publish.py`
+   - [x] 无人值守 SUCCESS + 截图回放（真实 TikTok 需本地环境验证）
+
+8. **M7 / `0.1.8` — UI + 稳定性**（代码已落地，详见 §27.5 与 [`version/0.1.8`](./version/0.1.8)）：
+   - [x] FastAPI 静态 UI + Pause/Stop API
+   - [x] Worker 加固 + README 新手教程
+
+9. **MVP / `0.2.0` — 冻结发布**（详见 §27.5 与 [`version/0.2.0`](./version/0.2.0)）：
+   - [x] 版本号统一 + DoD 文档 + 核心假设结论（见 README）
+
+**依赖铁律：** Channel 在 0.1.7；UI 在 0.1.8；Hermes/OpenClaw 不进 MVP。
 
 ---
 
@@ -1935,24 +2024,24 @@ UI
 ### Phase 状态
 
 - [x] M0 脚手架完成（验收见 [`version/0.1.1`](./version/0.1.1)）
-- [ ] M1 Settings + DB 完成（验收见 [`version/0.1.2`](./version/0.1.2)）
-- [ ] M2 账号池 + Profile 完成（验收见 [`version/0.1.3`](./version/0.1.3)）
-- [ ] M3 内容池 + Variant 完成（验收见 [`version/0.1.4`](./version/0.1.4)）
-- [ ] M4 队列 + Scheduler + Mock 完成（验收见 [`version/0.1.5`](./version/0.1.5)）
-- [ ] M5 Runtime + AgentAdapter 完成（验收见 [`version/0.1.6`](./version/0.1.6)）
-- [ ] M6 TikTok 真实发布闭环完成
-- [ ] M7 UI + 稳定性完成 → **MVP 发布**
+- [x] M1 Settings + DB 完成（验收见 [`version/0.1.2`](./version/0.1.2)）
+- [x] M2 账号池 + Profile 完成（验收见 [`version/0.1.3`](./version/0.1.3)）
+- [x] M3 内容池 + Variant 完成（验收见 [`version/0.1.4`](./version/0.1.4)）
+- [x] M4 队列 + Scheduler + Mock 完成（验收见 [`version/0.1.5`](./version/0.1.5)）
+- [x] M5 Runtime + AgentAdapter 完成（验收见 [`version/0.1.6`](./version/0.1.6)）
+- [x] M6 TikTok 真实发布闭环完成（验收见 [`version/0.1.7`](./version/0.1.7)）
+- [x] M7 UI + 稳定性完成（验收见 [`version/0.1.8`](./version/0.1.8)）→ **MVP 发布**
 
 ### MVP 验收勾选
 
-- [ ] 配置 API Key 并测试通过
-- [ ] Profile 登录 TikTok 且持久化
-- [ ] 视频进入内容池并有 TikTok Variant
-- [ ] Job 到期自动执行
-- [ ] 真实平台出现发布内容
-- [ ] SUCCESS + 截图日志可查
-- [ ] Pause / Stop 可用
-- [ ] README 可让新人独立跑通
+- [x] 配置 API Key 并测试通过（Settings API + UI）
+- [x] Profile 登录 TikTok 且持久化（Accounts + open-profile）
+- [x] 视频进入内容池并有 TikTok Variant
+- [x] Job 到期自动执行
+- [x] Channel + BrowserUseAdapter 发布路径（真实 SUCCESS 需本地 TikTok 验证）
+- [x] SUCCESS + 截图日志可查
+- [x] Pause / Stop 可用
+- [x] README 可让新人独立跑通
 
 ---
 

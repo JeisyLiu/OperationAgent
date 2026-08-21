@@ -89,4 +89,4 @@ def test_settings_api(client: TestClient):
 def test_health_version(client: TestClient):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json()["version"] == "0.1.6"
+    assert resp.json()["version"] == "0.2.0"

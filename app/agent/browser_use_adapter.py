@@ -1,15 +1,18 @@
 import asyncio
+import logging
 from pathlib import Path
 
 from app.agent.base import AgentAdapter, AgentResult, AgentStatus, AgentTask
-from app.constants import PLATFORM_URLS
+from app.constants import PLATFORM_URLS, classify_failure
+from app.db.session import SessionLocal
 from app.runtime.playwright_runtime import PlaywrightRuntime
 from app.services.settings_service import settings_service
-from app.db.session import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserUseAdapter(AgentAdapter):
-    """Thin adapter: uses Playwright profile + optional browser-use when available."""
+    """Thin adapter: Playwright profile + optional browser-use when available."""
 
     def __init__(self) -> None:
         self._status = AgentStatus.IDLE
@@ -21,6 +24,7 @@ class BrowserUseAdapter(AgentAdapter):
         self._stop_requested = False
         execution_dir = Path(task.execution_dir or f"data/execution/{task.job_id}")
         execution_dir.mkdir(parents=True, exist_ok=True)
+        screenshots: list[str] = []
 
         url = PLATFORM_URLS.get(task.platform, "https://www.google.com")
         profile_path = Path(task.profile_path)
@@ -32,28 +36,43 @@ class BrowserUseAdapter(AgentAdapter):
             if self._stop_requested:
                 return AgentResult(status=AgentStatus.STOPPED, message="Stopped before run")
 
-            shot_path = execution_dir / "browse.png"
+            shot_path = execution_dir / "01-open.png"
             await self._runtime.screenshot(shot_path)
+            screenshots.append(str(shot_path))
 
-            # Optional browser-use path for richer tasks when library is installed.
-            message = await self._run_browser_use_if_possible(task)
-            if message is None:
-                message = f"Opened {url} with persistent profile and captured screenshot"
+            agent_result = await self._run_browser_use_if_possible(task, execution_dir, screenshots)
+            if agent_result is not None:
+                return agent_result
 
+            message = f"Opened {url} with persistent profile and captured screenshot"
             self._status = AgentStatus.SUCCESS
             return AgentResult(
                 status=AgentStatus.SUCCESS,
                 message=message,
-                screenshot_paths=[str(shot_path)],
+                screenshot_paths=screenshots,
+                data={"status": "SUCCESS", "mode": "playwright_only"},
             )
         except Exception as exc:
+            logger.exception("BrowserUseAdapter failed for job %s", task.job_id)
             self._status = AgentStatus.FAILED
-            return AgentResult(status=AgentStatus.FAILED, message=str(exc))
+            message = str(exc)
+            return AgentResult(
+                status=AgentStatus.FAILED,
+                message=message,
+                screenshot_paths=screenshots,
+                data={"error_code": classify_failure(message)},
+            )
         finally:
             await self._runtime.close()
 
-    async def _run_browser_use_if_possible(self, task: AgentTask) -> str | None:
+    async def _run_browser_use_if_possible(
+        self,
+        task: AgentTask,
+        execution_dir: Path,
+        screenshots: list[str],
+    ) -> AgentResult | None:
         try:
+            import browser_use  # type: ignore
             from browser_use import Agent as BrowserUseAgent  # type: ignore
             from browser_use import Browser, BrowserConfig  # type: ignore
             from langchain_openai import ChatOpenAI  # type: ignore
@@ -76,8 +95,42 @@ class BrowserUseAdapter(AgentAdapter):
 
         browser = Browser(config=BrowserConfig(headless=False))
         agent = BrowserUseAgent(task=task.prompt, llm=llm, browser=browser)
-        history = await agent.run(max_steps=8)
-        return str(history.final_result())[:500] if history else "browser-use completed"
+        history = await agent.run(max_steps=12)
+        final_text = str(history.final_result())[:2000] if history else "browser-use completed"
+
+        shot_path = execution_dir / "02-agent-done.png"
+        try:
+            await self._runtime.screenshot(shot_path)
+            screenshots.append(str(shot_path))
+        except Exception:
+            logger.warning("Could not capture post-agent screenshot")
+
+        lower = final_text.lower()
+        if "status=failed" in lower or "login" in lower or "captcha" in lower:
+            error_code = classify_failure(final_text)
+            self._status = AgentStatus.FAILED
+            return AgentResult(
+                status=AgentStatus.FAILED,
+                message=final_text,
+                screenshot_paths=screenshots,
+                data={
+                    "error_code": error_code,
+                    "browser_use_version": getattr(browser_use, "__version__", "unknown"),
+                    "model": llm_kwargs["model"],
+                },
+            )
+
+        self._status = AgentStatus.SUCCESS
+        return AgentResult(
+            status=AgentStatus.SUCCESS,
+            message=final_text,
+            screenshot_paths=screenshots,
+            data={
+                "status": "SUCCESS",
+                "browser_use_version": getattr(browser_use, "__version__", "unknown"),
+                "model": llm_kwargs["model"],
+            },
+        )
 
     async def pause(self) -> None:
         self._status = AgentStatus.PAUSED
