@@ -15,11 +15,12 @@
 - 本地数据目录约定（`data/` gitignore）
 - `GET /health` 健康检查
 - 基础 README：如何安装与启动
+- 文档入口：`version/README.md`、`version/BUILD_VS_BUY.md`
 
 ## 本版本不负责（Out of Scope）
 
 - 数据库表与业务 API
-- Playwright / Agent / Channel 实现
+- Playwright / browser-use / Channel 实现
 - 前端 UI
 
 ---
@@ -33,12 +34,13 @@ backend/app/
 ├── api/             ← 仅 health
 ├── services/        ← 空包占位
 ├── db/              ← 空包占位
-├── agent/           ← 空包占位（禁止写具体 Agent）
+├── agent/           ← 空包占位（禁止写具体 Agent SDK）
 ├── runtime/         ← 空包占位
 └── channels/        ← 空包占位
 ```
 
-原则：先立「层」，再填「实现」。后续版本只能向对应层填充，不得跨层直连。
+原则：先立「层」，再填「实现」。后续版本只能向对应层填充，不得跨层直连。  
+自研/复用边界见 `version/BUILD_VS_BUY.md`。
 
 ---
 
@@ -47,29 +49,30 @@ backend/app/
 ### 工程
 
 - [ ] 创建 `pyproject.toml` 或 `requirements.txt`
-- [ ] 锁定核心依赖：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（先声明，本版本可不建表）
-- [ ] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、`profiles/` 运行产物
-- [ ] 提供 `.env.example`（仅占位项：`APP_DATA_DIR`、`DATABASE_URL`）
+- [ ] 锁定核心依赖声明：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（本版本可不建表）
+- [ ] 预留后续依赖注释：`playwright`、`browser-use`（安装可放到 0.1.3/0.1.6）
+- [ ] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、运行产物
+- [ ] 提供 `.env.example`（`APP_DATA_DIR`、`DATABASE_URL`、`AGENT_ADAPTER`）
 
 ### 应用骨架
 
 - [ ] `backend/app/main.py`：创建 FastAPI app，挂载 router
 - [ ] `backend/app/config.py`：读取环境变量，解析 `data/` 根路径
 - [ ] `GET /health` → `{ "status": "ok", "version": "0.1.1" }`
-- [ ] 各业务包建立 `__init__.py` 占位，避免后续 import 混乱
+- [ ] 各业务包建立 `__init__.py` 占位
 
 ### 文档
 
-- [ ] README：安装 Python、创建 venv、安装依赖、启动 uvicorn 步骤
-- [ ] 在 README 中注明版本路线见 `version/README.md`
+- [ ] README：安装 Python、venv、依赖、启动 uvicorn
+- [ ] README 注明版本路线 `version/README.md` 与自研/复用 `version/BUILD_VS_BUY.md`
 
 ---
 
 ## 验收标准
 
-1. `uvicorn backend.app.main:app`（或等价命令）可启动无报错  
-2. 访问 `/health` 返回 200 且含版本号 `0.1.1`  
-3. 目录结构与 `TODO.md` 推荐结构一致（允许微调命名）  
+1. `uvicorn` 启动无报错  
+2. `/health` 返回 200 且含版本号 `0.1.1`  
+3. 目录分层与设计一致（允许微调命名）  
 4. `data/` 不进入 git  
 
 ## 完成定义

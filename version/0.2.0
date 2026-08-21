@@ -2,33 +2,35 @@
 
 **依赖：** 0.1.8 全部完成  
 **对应里程碑：** MVP DoD  
-**目标：** 冻结第一阶段产品能力；证明核心假设成立；明确不做清单与下一阶段入口。
+**目标：** 冻结第一阶段产品能力；证明核心假设成立；固化「自研业务 + 复用 browser-use」边界。
 
 ---
 
 ## MVP 一句话
 
-> 运行在用户本地电脑上的 AI Social Media Operator：首次登录做人机校验后，账号池驱动的发布全自动无人值守。
+> 运行在用户本地电脑上的 AI Social Media Operator：首次登录做人机校验后，账号池驱动的发布由 browser-use 全自动无人值守完成。
 
 ---
 
 ## 架构冻结图（允许范围）
 
 ```text
-UI → API → Services
-              ├─ Settings / LLMProvider
+UI → API → Services（自研）
+              ├─ Settings / LLM 薄封装
               ├─ Account Pool → Browser Profile
               ├─ Content Pool → Content Variant
               └─ Publish Queue → Scheduler
                                     ↓
-                              Channel (TikTok)
+                              Channel (TikTok)     ← 自研编排
                                     ↓
-                              AgentAdapter
+                              AgentAdapter         ← 自研胶水
                                     ↓
-                              ComputerRuntime (Playwright)
+                              browser-use（默认）  ← 复用
                                     ↓
-                              Local Browser
+                              Playwright + Local Profile
 ```
+
+**冻结期内默认不纳入：** CustomAgent、OCR/PyAutoGUI 主路径、官方 API 排程整仓、Hermes/OpenClaw 作为唯一后端。
 
 ---
 
@@ -41,43 +43,46 @@ UI → API → Services
 - [ ] 账号进入账号池且 ACTIVE
 - [ ] 视频进入内容池，并有 TikTok Variant
 - [ ] 创建 PublishJob，到期后自动执行
-- [ ] Agent 全自动完成上传与发布（发布过程无需人机校验）
+- [ ] **BrowserUseAdapter** 全自动完成上传与发布（发布过程无需人机校验）
 - [ ] Job = SUCCESS，平台侧可见内容
 - [ ] 执行日志与截图可回看
 - [ ] Pause / Stop 可用
 
 ### 解耦与质量
 
-- [ ] Account / Content / Job / Agent / Runtime / Channel 分层清晰，无跨层直连
+- [ ] Account / Content / Job / Agent / Channel 分层清晰，无跨层直连
 - [ ] 切换 AgentAdapter 实现无需改 JobService 核心逻辑
+- [ ] 未自研 Agent Framework；未把 Postiz 类 API 工具当执行底座
 - [ ] 不存平台密码；不破解验证码
 - [ ] 单机 SQLite + 本地进程；无云端集群依赖
-- [ ] README 可让新人独立跑通
+- [ ] README 可让新人独立跑通（含 browser-use / Playwright 安装）
 
 ### 明确不做（本版本仍保持不做）
 
 - [ ] 确认未引入：云端多设备、Kafka、K8s、官方平台 API、SaaS 多租户、计费
-- [ ] 确认未做：自动注册账号、自动破解验证码、评论自动回复（属后续阶段）
+- [ ] 确认未做：自动注册账号、自动破解验证码、评论自动回复
+- [ ] 确认 OCR/PyAutoGUI 未进入发布主路径（若实验过，须隔离且文档标明）
 
 ---
 
 ## 发布待办
 
 - [ ] 版本号统一：`/health`、包元数据、UI 关于页显示 `0.2.0`
-- [ ] 更新根 `README.md`：MVP 能力说明 + 快速开始 + 限制说明
+- [ ] 更新根 `README.md`：MVP 能力 + 自研/复用说明 + 快速开始
+- [ ] 核对 `version/BUILD_VS_BUY.md` 与实现一致
 - [ ] 更新 `TODO.md` 进度勾选区（M0–M7 / MVP 验收）
 - [ ] 打 git tag：`v0.2.0`（需用户明确要求时再执行）
-- [ ] 整理已知问题清单 `version/0.2.0-known-issues`（可选）
+- [ ] 整理已知问题清单（可选）
 
 ---
 
 ## 核心假设验证结论（发布时填写）
 
-> 一个运行在用户本地电脑上的 AI Agent，能否可靠地消费运营任务，并通过浏览器完成实际社交媒体操作？
+> 一个运行在用户本地电脑上的 AI Agent（默认 browser-use），能否可靠地消费运营任务，并通过浏览器完成实际社交媒体操作？
 
-- [ ] **成立**（附：连续冒烟结果 / 失败类型统计）
+- [ ] **成立**（附：连续冒烟结果 / 失败类型统计 / 模型与 browser-use 版本）
 - [ ] **部分成立**（附：阻塞项）
-- [ ] **不成立**（附：原因与是否调整架构）
+- [ ] **不成立**（附：原因与是否调整默认 Adapter）
 
 ---
 
@@ -90,6 +95,8 @@ UI → API → Services
 3. YouTube / Reddit Channel  
 4. 评论读取与人工确认回复  
 5. 简单数据复盘  
+6. Stagehand / Hermes / OpenClaw 第二 Adapter  
+7. OCR 降级路径（仅当 DOM Agent 不足）  
 
 ---
 

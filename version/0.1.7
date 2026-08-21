@@ -1,15 +1,15 @@
 # v0.1.7 — TikTok 真实发布闭环（无人值守）
 
-**依赖：** 0.1.6  
+**依赖：** 0.1.6（BrowserUseAdapter 可用）  
 **对应里程碑：** M6  
-**目标：** 在账号已完成首次登录的前提下，Job 到期后全自动完成 TikTok 视频发布并记 SUCCESS。
+**目标：** 账号已完成首次登录后，Job 到期由 **browser-use** 全自动完成 TikTok 视频发布并记 SUCCESS。
 
 ---
 
 ## 本版本负责（In Scope）
 
-- `Channel` 抽象 + `TikTokChannel.publish()`
-- 编排：选账号 → 加载 Profile → 组装 Agent Task → execute → verify
+- `Channel` 抽象 + `TikTokChannel.publish()`（编排，不写死选择器脚本为主路径）
+- 流程：校验账号 → 加载 Profile → 组装 Agent Task → `BrowserUseAdapter.execute` → verify
 - 发布路径全自动（上传 / 填文案 / 发布 / 验证）
 - 失败分类与登录失效处理
 - `scripts/smoke_publish.py` 端到端冒烟
@@ -20,6 +20,8 @@
 - 评论、私信、数据采集
 - 完整桌面 UI（属 0.1.8）
 - 破解验证码 / 自动绕过风控
+- OCR / PyAutoGUI 降级主路径
+- 自研 CustomAgent
 
 ---
 
@@ -28,15 +30,17 @@
 ```text
 PublishJob
     ↓
-TikTokChannel.publish(ctx)
+TikTokChannel.publish(ctx)     ← 自研：编排 + 校验 + 失败分类
     ↓
-AgentAdapter.execute(prompt) ──→ ComputerRuntime (Playwright)
+AgentAdapter.execute(prompt)   ← BrowserUseAdapter（复用）
+    ↓
+Playwright + Profile
     ↓
 Verify → SUCCESS / FAILED
 ```
 
 - Channel **不关心** 设备是谁，只消费上层传入的 account / profile / variant  
-- Channel **不直接** 调用 Playwright 细粒度 API（经 Runtime / Agent）  
+- Channel **不**把 Playwright API 散落在业务里；页面操作交给 Agent  
 - 人机校验 **不得** 成为发布成功路径的一步  
 
 ---
@@ -56,15 +60,16 @@ Verify → SUCCESS / FAILED
 ### Channel
 
 - [ ] `channels/base.py`：`publish()` /（预留）`read_comments` 等空方法
-- [ ] `channels/tiktok.py`：实现 `publish()`
+- [ ] `channels/tiktok.py`：实现 `publish()` 编排
 - [ ] Worker：按 `platform` 路由到对应 Channel
 
 ### 发布编排
 
 - [ ] 执行前检查账号 ACTIVE + session 大致有效；无效则 FAILED（提示 `open-profile`）
-- [ ] 用 Variant + Account 填充 publish prompt
-- [ ] Observe → Act → Verify；关键步骤落截图
+- [ ] 用 Variant + Account 填充 publish prompt（指向本地视频路径）
+- [ ] 调用默认 `BrowserUseAdapter`；关键步骤落截图
 - [ ] Verify：URL / 页面成功文案 / 结果页特征（至少一种可靠信号）
+- [ ] （可选）对「文件选择」等强确定性步骤，经 Runtime 辅助，仍不扩散为全脚本发帖
 
 ### 失败处理
 
@@ -76,6 +81,7 @@ Verify → SUCCESS / FAILED
 
 - [ ] `scripts/smoke_publish.py`：创建 Job → 等待 SUCCESS
 - [ ] 执行期间不要求人工点击发布流程
+- [ ] 记录 browser-use 版本与模型，便于复现
 
 ---
 
@@ -83,8 +89,9 @@ Verify → SUCCESS / FAILED
 
 1. ACTIVE 账号 + READY Variant → 创建 Job → **无人值守** → TikTok 出现视频  
 2. Job = SUCCESS，execution 截图可回放  
-3. 人为制造未登录：Job FAILED，且错误指向重新登录，而非一直空转  
+3. 人为制造未登录：Job FAILED，且错误指向重新登录  
 4. 连续 3 次冒烟成功率 ≥ 2/3（环境允许前提下）  
+5. 主路径仍为 browser-use，而非手写全流程选择器脚本  
 
 ## 完成定义
 

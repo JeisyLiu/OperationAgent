@@ -2,15 +2,16 @@
 
 **依赖：** 0.1.1  
 **对应里程碑：** M1  
-**目标：** SQLite 可读写；AI Provider 配置可保存、可脱敏读取、可连通性探测。
+**目标：** SQLite 可读写；AI Provider 配置可保存、可脱敏读取、可连通性探测。  
+**边界：** LLM 调用用现成 SDK（OpenAI 兼容或 LiteLLM），只做薄封装，不自研多厂商框架。
 
 ---
 
 ## 本版本负责（In Scope）
 
-- SQLAlchemy 模型与建库脚本（本版本至少落地 `ai_settings`；其余表可先建空壳或一并建好但不暴露业务 API）
+- SQLAlchemy 模型与建库脚本（至少 `ai_settings`；其余表可一并建好但不暴露业务 API）
 - Settings Service + Settings API
-- `LLMProvider` 抽象（厂商不写死）
+- LLM 客户端薄封装（厂商不写死）
 - API Key 本地加密存储
 
 ## 本版本不负责（Out of Scope）
@@ -18,6 +19,7 @@
 - 账号 / 内容 / 任务 API
 - Agent 执行、浏览器操作
 - 前端 Settings 页（可 curl/API 验收）
+- 完整自研 Provider 插件体系
 
 ---
 
@@ -26,12 +28,12 @@
 ```text
 api/settings.py  →  services/settings_service.py  →  db/models(ai_settings)
                                               ↘
-                                         llm/provider.py（抽象）
+                                         llm/client.py（薄封装，复用 SDK）
 ```
 
 - API 层不直接碰加密细节  
-- Service 不绑定某一家 SDK 的业务分支到路由里  
-- Key 禁止写入日志、禁止明文出现在 API 响应（仅脱敏）
+- Key 禁止写入日志、禁止明文出现在 API 响应（仅脱敏）  
+- 为 0.1.6 browser-use 预留：能读出 provider / base_url / model / decrypted key  
 
 ---
 
@@ -40,22 +42,21 @@ api/settings.py  →  services/settings_service.py  →  db/models(ai_settings)
 ### 数据
 
 - [ ] `db/session.py`：SQLite 引擎与 Session
-- [ ] `db/models.py`：至少 `AiSettings`；建议同步建好后续表结构但本版本不接业务
+- [ ] `db/models.py`：至少 `AiSettings`；建议同步建好后续表结构
 - [ ] `scripts/init_db.py`：一键建表
-- [ ] （可选）Alembic；首版可用建表脚本代替
 
 ### Settings
 
 - [ ] `GET /api/settings/ai`：返回 provider / base_url / model / api_key 脱敏
 - [ ] `PUT /api/settings/ai`：保存配置
 - [ ] `POST /api/settings/ai/test`：发一条最小 chat，验证连通
-- [ ] API Key：Fernet（或同等）本地加密；密钥文件放本机 `data/`，不进仓库
+- [ ] API Key：Fernet（或同等）本地加密；密钥文件放 `data/`，不进仓库
 
-### LLM 抽象
+### LLM 薄封装
 
-- [ ] `LLMProvider` 接口：`chat(messages) -> str`
-- [ ] 至少实现一个：`OpenAICompatibleProvider`（覆盖 OpenAI / 兼容网关）
-- [ ] Provider 由 settings 中的 `provider` + `base_url` 选择，业务不写死厂商名
+- [ ] 统一 `chat(messages) -> str`（或等价）
+- [ ] 使用 OpenAI 兼容客户端或 LiteLLM，覆盖兼容网关
+- [ ] 由 settings 选择 base_url / model，业务不写死厂商名
 
 ### 测试
 

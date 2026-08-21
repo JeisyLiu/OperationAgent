@@ -29,11 +29,12 @@ Frontend (UI)
     ↓ HTTP
 FastAPI (api/*)
     ↓
-services/*          ← UI 不得绕过 API 直连 DB / Playwright
+services/*          ← UI 不得绕过 API 直连 DB / browser-use / Playwright
 ```
 
 - UI 只消费 REST；不嵌入 Agent 密钥逻辑以外的敏感实现细节  
 - Take Over = 停止 Agent，保留浏览器给用户（仅异常兜底入口）  
+- 默认执行引擎文案可写「AI 浏览器助手（browser-use）」
 
 ---
 
@@ -59,7 +60,8 @@ services/*          ← UI 不得绕过 API 直连 DB / Playwright
 
 ### 文档
 
-- [ ] README：安装 → 配 Key → 首次登录（人机校验）→ 上传 → 创建任务 → 无人值守等待 SUCCESS
+- [ ] README：安装（含 browser-use / Playwright）→ 配 Key → 首次登录（人机校验）→ 上传 → 创建任务 → 无人值守等待 SUCCESS
+- [ ] README 链到 `version/BUILD_VS_BUY.md`（自研/复用说明）
 - [ ] 明确声明：仅操作用户自有账号；不破解验证码
 
 ### 体验文案

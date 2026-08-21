@@ -425,22 +425,22 @@ SQLite + Python Worker
 
 # 十一、Agent 层
 
-第一阶段不要自行开发完整 Agent Framework。
+第一阶段**不要自行开发完整 Agent Framework**，也不优先自研「LLM + 工具循环」。
 
-直接复用现有 Agent/Computer Use 项目，例如：
+## 11.1 默认选型（评测后）
 
-```text
-Hermes
-OpenClaw
-```
+| 优先级 | 方案 | 用途 |
+|--------|------|------|
+| P0 默认 | **browser-use** | Python + Playwright，本地 Profile，Observe→Act 现成 |
+| P1 备选 | Stagehand | Playwright 增强（act/observe/extract），TS/Python |
+| P2 可选 | Hermes / OpenClaw | 完整个人 Agent Gateway，能力强但更重，作第二后端 |
+| P3 尽量不做 | CustomAgentAdapter | 仅当 P0/P1 集成失败时的保底 |
 
-系统自己实现一个统一的：
+系统只自研一层薄胶水：
 
 ```text
 AgentAdapter
 ```
-
-接口。
 
 例如：
 
@@ -448,6 +448,9 @@ AgentAdapter
 class AgentAdapter:
 
     def execute(self, task):
+        pass
+
+    def pause(self):
         pass
 
     def stop(self):
@@ -460,15 +463,11 @@ class AgentAdapter:
 具体实现：
 
 ```text
-HermesAdapter
-OpenClawAdapter
-```
-
-未来如果需要，也可以加入：
-
-```text
-BrowserUseAdapter
-CustomAgentAdapter
+BrowserUseAdapter      ← MVP 默认
+StagehandAdapter       ← 备选
+HermesAdapter          ← 可选后补
+OpenClawAdapter        ← 可选后补
+MockAgentAdapter       ← 队列联调
 ```
 
 业务系统永远只调用：
@@ -479,15 +478,19 @@ agent.execute(task)
 
 而不要在业务层直接调用某一个 Agent 产品的具体 API。
 
-这样可以保持 Agent 层可替换。
+## 11.2 明确不做
+
+- 不自研 Agent 编排框架  
+- 不把 Postiz / Mixpost 等**官方 API 排程工具**当执行底座（产品路径不同）  
+- 不依赖云端「自动过验证码」能力作为正常发布路径  
 
 ---
 
 # 十二、Browser / Desktop Runtime
 
-Agent 与具体操作工具解耦。
+Agent 与具体操作工具解耦。Runtime **只做薄封装**，不重写浏览器引擎。
 
-统一抽象：
+统一抽象（便于换 backend；若 browser-use 已内置浏览器控制，Adapter 可直接委托，Runtime 仍保留接口边界）：
 
 ```text
 ComputerRuntime
@@ -505,32 +508,23 @@ close()
 第一阶段优先：
 
 ```text
-Playwright
+Playwright（含 persistent user_data_dir / Profile）
 ```
 
-操作浏览器。
+很多能力由 **browser-use / Stagehand 内部**完成，业务层不要平行再写一套点击脚本。
 
-遇到 Playwright 无法处理的界面，再使用：
-
-```text
-OpenCV
-OCR
-PyAutoGUI
-```
-
-作为视觉/桌面自动化补充。
-
-优先级：
+## 12.1 降级策略（延后，不进 MVP 主路径）
 
 ```text
-DOM / Playwright
-        ↓
+DOM / Playwright / browser-use
+        ↓（仅当 DOM 路径稳定失败）
 OCR / OpenCV / Vision
         ↓
 PyAutoGUI 坐标操作
 ```
 
-不要一开始全部依赖固定坐标。
+MVP **默认不引入** OpenCV / PaddleOCR / PyAutoGUI，避免过早复杂化。  
+不要一开始依赖固定坐标。
 
 ---
 
@@ -827,7 +821,33 @@ execution/
 
 # 二十、推荐技术栈
 
-第一版：
+## 20.1 自研 vs 复用（定稿）
+
+```text
+【必须自研】运营业务层
+  Settings / 账号池 / 内容池+Variant / 发布队列+状态机
+  Channel 编排与失败分类 / 执行记录 / 产品 UI
+  AgentAdapter 薄胶水
+
+【直接复用，不自研】
+  Agent 大脑：browser-use（默认）/ Stagehand（备选）
+  浏览器：Playwright（多由 Agent 库携带）
+  API：FastAPI + Uvicorn
+  DB：SQLAlchemy + SQLite
+  LLM SDK：OpenAI 兼容客户端或 LiteLLM
+  调度：asyncio 轮询或 APScheduler（不要 Temporal/Celery）
+
+【MVP 暂缓】
+  Hermes / OpenClaw（可选第二 Adapter）
+  OpenCV / PaddleOCR / PyAutoGUI
+  CustomAgentAdapter
+
+【不当底座】
+  Postiz / Mixpost / BrightBean 等官方 API 排程产品
+  （路径是 OAuth/API，不是本地浏览器 Operator）
+```
+
+## 20.2 第一版依赖清单
 
 ```text
 Python
@@ -835,21 +855,14 @@ FastAPI
 SQLite
 SQLAlchemy
 Playwright
-PyAutoGUI
-OpenCV
-PaddleOCR
-```
-
-AI：
-
-```text
-Hermes / OpenClaw
+browser-use          ← 默认 Agent
+（可选）litellm
 ```
 
 通过：
 
 ```text
-AgentAdapter
+AgentAdapter → BrowserUseAdapter
 ```
 
 接入。
@@ -1051,8 +1064,10 @@ Content ≠ Publish Job
 ### 4. Agent 与业务逻辑解耦
 
 ```text
-Business Logic ≠ Hermes/OpenClaw
+Business Logic ≠ browser-use / Hermes / OpenClaw
 ```
+
+只依赖 `AgentAdapter`。
 
 ### 5. Channel 与 Runtime 解耦
 
@@ -1093,7 +1108,7 @@ Take Over
 最终 MVP 保持为：
 
 ```text
-                         AI Operator
+                         AI Operator（自研业务）
                               │
                     ┌─────────┴─────────┐
                     │                   │
@@ -1106,41 +1121,44 @@ Take Over
                  Scheduler
                     │
                     ↓
-                Account Pool
+                Account Pool → Browser Profile
                     │
                     ↓
-             Browser Profile
+              Channel (TikTok…)     ← 自研编排
                     │
                     ↓
-              Agent Adapter
+              AgentAdapter          ← 自研薄胶水
              ┌──────┴──────┐
              ↓             ↓
-          Hermes        OpenClaw
-             │             │
-             └──────┬──────┘
-                    ↓
-             Computer Runtime
-             ┌──────┼──────┐
-             ↓      ↓      ↓
-         Playwright OpenCV PyAutoGUI
-                    │
-                    ↓
-              Current Browser
-                    │
-          ┌─────────┼─────────┐
-          ↓         ↓         ↓
-       TikTok    YouTube    Reddit
+        browser-use    (Stagehand / Hermes / OpenClaw 可选)
+             │
+             ↓
+        Playwright + Local Browser Profile
+             │
+             ↓
+          TikTok / YouTube / Reddit …
 ```
 
 核心原则：
 
-> **自己只开发“运营业务层”和“资源/任务管理层”，底层 Agent、浏览器控制、视觉识别尽量复用现有开源能力。**
+> **自己只开发“运营业务层”和“资源/任务管理层”；Agent 大脑与浏览器驱动复用开源（默认 browser-use），不自研 Agent Framework，OCR/桌面坐标降级延后。**
 
 第一阶段的核心不是把系统设计得多庞大，而是证明一个关键假设：
 
 > **一个运行在用户本地电脑上的 AI Agent，能否可靠地消费运营任务，并通过浏览器完成实际社交媒体操作。**
 
 只要这个假设成立，后面的自动内容生产、批量账号运营、评论回复、数据分析以及多设备扩展，都可以在这个架构上继续演进。
+
+---
+
+# 二十六点附、文档索引（迭代入口）
+
+| 文档 | 用途 |
+|------|------|
+| `TODO.md`（本文） | 产品需求、架构、落地计划 |
+| `version/README.md` | `0.1.1` → `0.2.0` 版本路线 |
+| `version/BUILD_VS_BUY.md` | **自研 vs 复用**定稿 |
+| `version/0.x.x` | 各版本待办与验收 |
 
 ---
 ---
@@ -1159,11 +1177,14 @@ Take Over
 |------|------|
 | 单机优先 | 仅 SQLite + 本地进程；禁止引入 Redis/Kafka/PG/K8s |
 | 先闭环后扩展 | 先 1 个平台（TikTok）跑通，再加 YouTube / Reddit |
-| 业务层自研 | 只做运营业务与资源/任务管理；Agent/浏览器尽量复用 |
-| Agent 可替换 | 业务只依赖 `AgentAdapter`，不绑死 Hermes/OpenClaw |
+| 业务层自研 | 只做运营业务与资源/任务管理；Agent/浏览器复用开源 |
+| Agent 默认 browser-use | 经 `AgentAdapter` 接入；不绑死 Hermes/OpenClaw；不优先自研 CustomAgent |
+| Runtime 薄封装 | 不重写 Playwright；OCR/PyAutoGUI 不进 MVP 主路径 |
 | 人机校验仅登录 | 仅首次登录（及登录失效重登）需用户做人机校验；发布全自动 |
 | 不做黑产能力 | 不破解验证码、不绕过风控、不自动注册账号 |
 | 每阶段可演示 | 每阶段结束必须有可手工验收的 Demo |
+
+版本待办与「自研/复用」清单见 [`version/`](./version/README.md)。
 ---
 
 ## 27.2 里程碑总览
@@ -1231,13 +1252,15 @@ OperationAgent/
 │   │   ├── scheduler/
 │   │   │   └── worker.py          # PENDING → CLAIM → EXECUTE
 │   │   ├── agent/
-│   │   │   ├── base.py            # AgentAdapter 抽象
-│   │   │   ├── hermes_adapter.py  # 可选实现
-│   │   │   ├── openclaw_adapter.py
-│   │   │   └── mock_adapter.py    # 联调用 Mock
+│   │   │   ├── base.py                 # AgentAdapter 抽象
+│   │   │   ├── browser_use_adapter.py  # MVP 默认
+│   │   │   ├── stagehand_adapter.py   # 可选
+│   │   │   ├── hermes_adapter.py      # 可选后补
+│   │   │   ├── openclaw_adapter.py    # 可选后补
+│   │   │   └── mock_adapter.py        # 联调用 Mock
 │   │   ├── runtime/
-│   │   │   ├── base.py            # ComputerRuntime 抽象
-│   │   │   └── playwright_runtime.py
+│   │   │   ├── base.py                 # ComputerRuntime 薄抽象
+│   │   │   └── playwright_runtime.py   # Profile 启停/截图等
 │   │   ├── channels/
 │   │   │   ├── base.py            # Channel 抽象
 │   │   │   ├── tiktok.py
@@ -1458,23 +1481,25 @@ GET          /api/jobs/{id}/logs
 
 ### M5｜Computer Runtime + AgentAdapter（Week 5）
 
-**目标：** 真实浏览器可控，Agent 接口可插拔。
+**目标：** 以 **browser-use** 为默认真实 Adapter；业务只依赖 `AgentAdapter`；完成「已登录 Profile → 观察/截图」级能力。
 
-- [ ] `ComputerRuntime` 接口：screenshot / click / type / scroll / press / wait / open / close
-- [ ] `PlaywrightRuntime`：基于已有 Profile 启动/连接浏览器
 - [ ] `AgentAdapter`：`execute(task)` / `stop()` / `pause()` / `get_status()`
-- [ ] 接入至少一个真实 Adapter（Hermes 或 OpenClaw；另一侧可后补）
+- [ ] `BrowserUseAdapter`（默认）：绑定 persistent Profile + 本地 LLM 配置
+- [ ] `ComputerRuntime` 薄接口 + `PlaywrightRuntime`（Profile 启停/截图目录约定；可与 browser-use 共享 session）
+- [ ] 保留 `MockAgentAdapter` 供回归
 - [ ] 任务 Prompt 模板（见第十五节），只传业务语义，不传 DB 结构
 - [ ] 执行中持续落盘 step 截图
+- [ ] **不做**：CustomAgent 主路径；OCR/PyAutoGUI
 
-**验收：** 给定「打开页面并截图」类简单任务，Adapter + Runtime 可跑通并产出截图。
+**验收：** 给定「打开已登录站点并截图/完成简单页面操作」任务，BrowserUseAdapter 可跑通。
 
-**选型决策（本周必须拍板）：**
+**选型决策（已定默认，仅失败时降级）：**
 
 ```text
-优先评估 Hermes / OpenClaw 的本地可集成性
-若集成成本过高 → 先做「LLM + Playwright 工具循环」的轻量 CustomAgentAdapter
-仍保持 AgentAdapter 接口，不污染业务层
+P0  browser-use
+P1  Stagehand（browser-use 集成失败或不稳时）
+P2  Hermes / OpenClaw（可选第二后端）
+P3  CustomAgentAdapter（尽量不做）
 ```
 
 ---
@@ -1602,12 +1627,13 @@ UI
 
 | 风险 | 影响 | 应对 |
 |------|------|------|
-| 平台页面频繁改版 | 发布失败 | Observe-Act-Verify；失败截图；必要时 Take Over 兜底 |
-| Agent 框架集成难 | 延期 | 先 CustomAgentAdapter（LLM+工具循环）保闭环 |
+| 平台页面频繁改版 | 发布失败 | 交给 browser-use Observe-Act-Verify；失败截图；必要时 Take Over |
+| browser-use 集成/不稳定 | 延期 | 切 Stagehand；仍经 AgentAdapter；避免立刻自研 CustomAgent |
 | 登录态丢失 / 二次人机校验 | 发布中断 | FAILED 并引导用户重新登录；不自动破解；登录恢复后继续全自动 |
-| 发布流程中突然弹出验证码 | 无法无人值守 | 立即停止并提示重登；排查 Profile/风控；不把人工点发布做成常态 |
-| Playwright 无法点到控件 | 卡住 | 降级 OCR/视觉点击（M6 后按需，不阻塞首闭环） |
+| 发布流程中突然弹出验证码 | 无法无人值守 | 立即停止并提示重登；不把人工点发布做成常态 |
+| Playwright/DOM 点不到控件 | 卡住 | 先调 prompt/等待策略；OCR/PyAutoGUI 仅作 MVP 后降级 |
 | 单机 Worker 重复执行 | 双发 | SQLite 事务认领 + 进程锁 |
+| 误用官方 API 排程开源项目 | 路线跑偏 | 坚持浏览器 Operator；Postiz 等仅作竞品参考 |
 | 法律/ToS 风险 | 合规 | 仅操作用户自有已登录账号；文档声明用户责任 |
 ---
 
@@ -1639,10 +1665,10 @@ UI
 
 按顺序执行，勿跳步：
 
-1. **初始化仓库结构**（M0）：Python 项目 + FastAPI + `GET /health`
-2. **建表脚本**（M1 起步）：`accounts / content_* / publish_jobs / execution_logs / ai_settings`
+1. **初始化仓库结构**（M0 / `0.1.1`）：Python 项目 + FastAPI + `GET /health`
+2. **建表脚本**（M1 / `0.1.2`）：`accounts / content_* / publish_jobs / execution_logs / ai_settings`
 3. **写 `launch_profile.py`**：尽早验证 Playwright 持久化登录（降低后期风险）
-4. **选定 Agent 方案**：本周内决定 Hermes / OpenClaw / Custom 三选一作为默认 Adapter
+4. **锁定默认 Agent**：`browser-use` + `AgentAdapter`；另开一页冒烟「已登录 Profile 打开目标站」
 
 完成以上 4 项后，再进入 Accounts / Content / Queue 的业务开发。
 
@@ -1676,5 +1702,6 @@ UI
 
 **一句话执行方针：**
 
-> 先用 Mock 把队列与状态机跑稳，再用 Playwright + 可替换 Agent 打通 TikTok 一次真实发布；UI 放在闭环之后，平台数量服从稳定性。  
-> **产品体验铁律：人机校验只出现在首次（或重新）登录；账号池驱动的发布必须全自动、可无人值守。**
+> 自研业务与队列，复用 browser-use 做浏览器操作；先用 Mock 跑稳状态机，再无人值守打通 TikTok；UI 放闭环之后。  
+> **产品体验铁律：人机校验只出现在首次（或重新）登录；账号池驱动的发布必须全自动。**  
+> **工程铁律：不自研 Agent Framework；OCR/坐标点击不进 MVP；官方 API 排程工具不当底座。**

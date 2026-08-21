@@ -2,7 +2,7 @@
 
 **依赖：** 0.1.4  
 **对应里程碑：** M4  
-**目标：** PublishJob 状态机与单机 Worker 跑通；用 MockAgent 验证队列，不依赖真实浏览器发帖。
+**目标：** PublishJob 状态机与单机 Worker 跑通；用 MockAgent 验证队列，**不依赖** browser-use / 真实发帖。
 
 ---
 
@@ -17,9 +17,9 @@
 
 ## 本版本不负责（Out of Scope）
 
-- 真实 Playwright 发帖
-- 真实 Hermes/OpenClaw 调用
+- 真实 browser-use / Playwright 发帖
 - TikTokChannel 业务细节（可留空接口）
+- 前端
 
 ---
 
@@ -36,8 +36,8 @@ JobService ──→ Publish Queue (SQLite)
 ```
 
 - Worker **只**依赖 `AgentAdapter` 接口  
-- Channel / Runtime **本版本不接入真实实现**  
-- 业务层禁止 `import hermes` / `import playwright`
+- 业务层禁止 `import browser_use` / `import playwright`  
+- 真实 Adapter 放到 **0.1.6**
 
 ---
 
@@ -59,7 +59,7 @@ PENDING → CLAIMED → EXECUTING → VERIFYING → SUCCESS
 
 - [ ] `publish_jobs` 全字段（含 scheduled_at、retry_count、max_retries、result_json、时间戳）
 - [ ] `execution_logs`：job_id、step、message、screenshot_path
-- [ ] 创建 Job 时冗余写入 platform、browser_profile 快照（避免账号改动影响历史）
+- [ ] 创建 Job 时冗余写入 platform、browser_profile 快照
 
 ### API
 
@@ -74,8 +74,9 @@ PENDING → CLAIMED → EXECUTING → VERIFYING → SUCCESS
 - [ ] 后台循环：查询 `status=PENDING AND scheduled_at <= now`
 - [ ] SQLite 事务认领：`UPDATE … WHERE id=? AND status='PENDING'`，检查 rowcount
 - [ ] 单进程锁文件，避免多 Worker 抢同一库
-- [ ] 失败退避：如 1m / 5m / 15m 后进入 RETRY/PENDING
+- [ ] 失败退避：如 1m / 5m / 15m
 - [ ] CLAIMED/EXECUTING 超时回收为 RETRY
+- [ ] 调度用 asyncio 循环或 APScheduler（不要 Celery/Redis）
 
 ### MockAdapter
 
