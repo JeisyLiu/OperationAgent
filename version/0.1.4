@@ -1,0 +1,74 @@
+# v0.1.4 — 内容池 + Content Variant
+
+**依赖：** 0.1.3  
+**对应里程碑：** M3  
+**目标：** 媒体资产入库；同一 Asset 可拆出平台 Variant；与 PublishJob 严格分离。
+
+---
+
+## 本版本负责（In Scope）
+
+- `content_assets` / `content_variants` CRUD
+- 视频（及可选图片）上传到 `data/content/`
+- 手工创建/编辑平台 Variant（title / caption / hashtags）
+- Asset 状态：`DRAFT` / `READY`
+
+## 本版本不负责（Out of Scope）
+
+- AI 自动生成多平台文案（第二阶段）
+- 创建 PublishJob / 调度执行
+- 平台 Channel 逻辑
+
+---
+
+## 架构边界
+
+```text
+ContentAsset          ContentVariant           PublishJob
+────────────          ──────────────           ──────────
+视频/图/基础文案  →   某平台标题/标签/裁剪   →  （下一版本才出现）
+status=READY          status=READY
+```
+
+三者禁止混表、禁止在 Asset 上直接挂「已发布 URL」作为主状态。
+
+---
+
+## 待办清单
+
+### 数据
+
+- [ ] `content_assets`：title、media_type、file_path、base_caption、language、category、status
+- [ ] `content_variants`：asset_id、platform、title、caption、hashtags_json、media_path、extra_json、status
+- [ ] 文件落盘：`data/content/{asset_id}/...`，DB 只存相对路径
+
+### API
+
+- [ ] `GET/POST /api/content/assets`
+- [ ] `POST /api/content/assets/{id}/upload`：multipart 上传
+- [ ] `GET/POST /api/content/variants`
+- [ ] `GET/PATCH /api/content/variants/{id}`
+- [ ] 删除/禁用策略明确（软删或 status 即可）
+
+### 服务规则
+
+- [ ] 创建 Variant 时校验 Asset 存在且文件可读
+- [ ] 首版允许 Variant.media_path 复用 Asset.file_path（不做转码）
+- [ ] platform 枚举先支持：`tiktok`（预留 `youtube` / `reddit`）
+
+### 测试
+
+- [ ] 上传小视频 → 建 TikTok Variant → 列表可查
+
+---
+
+## 验收标准
+
+1. 上传 1 个 mp4，Asset = READY  
+2. 为其创建 TikTok Variant（标题/正文/标签齐全）  
+3. Asset 与 Variant ID 分离，修改 Variant 不影响 Asset 原文案  
+4. 仍无法「一键发布」（发布属后续版本）  
+
+## 完成定义
+
+内容与变体可管理 → 进入 **0.1.5**

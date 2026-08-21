@@ -1,0 +1,94 @@
+# v0.1.6 — ComputerRuntime + AgentAdapter
+
+**依赖：** 0.1.5  
+**对应里程碑：** M5  
+**目标：** 浏览器操作与 Agent 执行可插拔；业务仍只调用抽象接口；完成「打开已登录 Profile → 观察/截图」级真实能力。
+
+---
+
+## 本版本负责（In Scope）
+
+- `ComputerRuntime` 抽象 + `PlaywrightRuntime`
+- `AgentAdapter` 抽象 + 至少一个真实 Adapter + 保留 Mock
+- 任务 Prompt 模板（不暴露 DB 结构）
+- Worker 切换：可配置使用 Mock 或真实 Adapter
+- Pause / Stop 接口打通到 Adapter
+
+## 本版本不负责（Out of Scope）
+
+- 完整 TikTok 发帖成功验收（属 0.1.7）
+- OCR / PyAutoGUI 降级（可留接口，不强制）
+- UI
+
+---
+
+## 架构边界
+
+```text
+Scheduler
+    ↓
+AgentAdapter.execute(task)     ← 可替换：Mock / Hermes / OpenClaw / Custom
+    ↓
+ComputerRuntime                ← 可替换：Playwright（首版）
+    ↓
+Browser Profile（已登录）
+```
+
+```text
+❌ JobService 直接 new Playwright(...)
+❌ Channel 直接调用某 Agent 厂商 SDK
+✅ 一律经 Adapter / Runtime 接口
+```
+
+---
+
+## Agent 选型（本版本必须拍板）
+
+按集成成本择一作为默认，其余可后补：
+
+1. HermesAdapter  
+2. OpenClawAdapter  
+3. CustomAgentAdapter（LLM + Playwright 工具循环）— 集成困难时的保底  
+
+选定结果写入 README / config：`AGENT_ADAPTER=...`
+
+---
+
+## 待办清单
+
+### Runtime
+
+- [ ] 接口：`screenshot` / `click` / `type` / `scroll` / `press` / `wait` / `open` / `close`
+- [ ] `PlaywrightRuntime`：基于 Account 的 Profile 启动 persistent context
+- [ ] 截图统一写入当前 Job 的 `data/execution/{job_id}/`
+
+### AgentAdapter
+
+- [ ] 接口：`execute(task)` / `pause()` / `stop()` / `get_status()`
+- [ ] 实现 Mock（回归用）+ 至少一个真实 Adapter
+- [ ] `execute` 入参为纯业务任务描述（见 prompts），不含 SQL/表名
+
+### Prompt
+
+- [ ] `backend/app/prompts/publish_task.md` 落地
+- [ ] 明确：遇人机校验/登录失效 → 立即 FAILED，不破解
+- [ ] 明确：正常路径不等待人工确认
+
+### 集成到 Worker
+
+- [ ] 配置切换 Adapter
+- [ ] 真实 Adapter 冒烟：打开已登录站点 → 截图 → 返回成功依据
+- [ ] Stop 可中断正在执行的任务
+
+---
+
+## 验收标准
+
+1. 使用已 ACTIVE 的账号 Profile，Runtime 可打开并截图  
+2. 同一套 JobService，切换 Mock ↔ 真实 Adapter 无需改业务代码  
+3. `stop()` 后任务不再继续操作浏览器  
+4. 仍不要求 TikTok 上真实出现新视频（下版本验收）  
+
+## 完成定义
+
+Runtime + Adapter 可跑通 → 进入 **0.1.7**

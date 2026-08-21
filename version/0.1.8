@@ -1,0 +1,81 @@
+# v0.1.8 — 简易 UI + 稳定性打磨
+
+**依赖：** 0.1.7  
+**对应里程碑：** M7  
+**目标：** 非开发者可通过桌面 Web UI 走完主流程；Pause/Stop 可用；Worker 更稳；文档可独立复现。
+
+---
+
+## 本版本负责（In Scope）
+
+- 简易前端（React+Vite 或 FastAPI+简单页，二选一）
+- 对接已有 API：Settings / Accounts / Content / Queue / History
+- 当前任务状态条 + Pause / Stop
+- Worker 稳定性（崩溃恢复、锁、超时）
+- README 完整新手教程
+
+## 本版本不负责（Out of Scope）
+
+- 精美复杂后台、权限、多租户、计费
+- 第二阶段能力（AI 生成文案、评论回复、多设备）
+- 多平台 Channel 补齐（可显示「即将支持」）
+
+---
+
+## 架构边界
+
+```text
+Frontend (UI)
+    ↓ HTTP
+FastAPI (api/*)
+    ↓
+services/*          ← UI 不得绕过 API 直连 DB / Playwright
+```
+
+- UI 只消费 REST；不嵌入 Agent 密钥逻辑以外的敏感实现细节  
+- Take Over = 停止 Agent，保留浏览器给用户（仅异常兜底入口）  
+
+---
+
+## 待办清单
+
+### UI 页面
+
+- [ ] Dashboard：简要状态（队列中 / 执行中 / 最近成功失败）
+- [ ] Settings：配置 AI Key 并 Test
+- [ ] Accounts：添加账号、打开 Profile、标记已登录、查看状态
+- [ ] Content：上传视频、编辑 Variant
+- [ ] Queue：创建任务、列表、取消、重试
+- [ ] History：日志 + 截图查看
+- [ ] 底部「当前任务」条：平台 / 账号 / 步骤文案
+- [ ] 按钮：Pause / Stop（Take Over 可作为 Stop 的明确文案或二级操作）
+
+### 稳定性
+
+- [ ] Worker 崩溃后 CLAIMED/EXECUTING 超时回收
+- [ ] 单 Worker 锁；启动时检测并告警
+- [ ] 前端轮询或简易 SSE/WS 刷新任务状态（轮询即可）
+- [ ] 统一错误提示：登录失效 → 引导去 Accounts 重登
+
+### 文档
+
+- [ ] README：安装 → 配 Key → 首次登录（人机校验）→ 上传 → 创建任务 → 无人值守等待 SUCCESS
+- [ ] 明确声明：仅操作用户自有账号；不破解验证码
+
+### 体验文案
+
+- [ ] 首次登录引导突出「只需此步做人机校验」
+- [ ] 发布中页面强调「可离开，系统自动完成」
+
+---
+
+## 验收标准
+
+1. 按 README，不改代码完成一次 TikTok 发布  
+2. 执行中点 Stop，任务停止且状态可解释  
+3. UI 可查看历史截图与错误原因  
+4. 无 Redis/PG/K8s 等越界依赖  
+
+## 完成定义
+
+UI + 稳定性达标 → 冻结为 **0.2.0 MVP**

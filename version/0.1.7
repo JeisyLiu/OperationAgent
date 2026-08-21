@@ -1,0 +1,91 @@
+# v0.1.7 — TikTok 真实发布闭环（无人值守）
+
+**依赖：** 0.1.6  
+**对应里程碑：** M6  
+**目标：** 在账号已完成首次登录的前提下，Job 到期后全自动完成 TikTok 视频发布并记 SUCCESS。
+
+---
+
+## 本版本负责（In Scope）
+
+- `Channel` 抽象 + `TikTokChannel.publish()`
+- 编排：选账号 → 加载 Profile → 组装 Agent Task → execute → verify
+- 发布路径全自动（上传 / 填文案 / 发布 / 验证）
+- 失败分类与登录失效处理
+- `scripts/smoke_publish.py` 端到端冒烟
+
+## 本版本不负责（Out of Scope）
+
+- YouTube / Reddit Channel（可空壳）
+- 评论、私信、数据采集
+- 完整桌面 UI（属 0.1.8）
+- 破解验证码 / 自动绕过风控
+
+---
+
+## 架构边界
+
+```text
+PublishJob
+    ↓
+TikTokChannel.publish(ctx)
+    ↓
+AgentAdapter.execute(prompt) ──→ ComputerRuntime (Playwright)
+    ↓
+Verify → SUCCESS / FAILED
+```
+
+- Channel **不关心** 设备是谁，只消费上层传入的 account / profile / variant  
+- Channel **不直接** 调用 Playwright 细粒度 API（经 Runtime / Agent）  
+- 人机校验 **不得** 成为发布成功路径的一步  
+
+---
+
+## 产品铁律（本版本验收关键）
+
+```text
+✅ 首次登录已在 0.1.3 完成（含人机校验）
+✅ 本版本发布过程：用户可不在场
+❌ 发布中弹验证码仍自动硬刚 → 必须 FAILED 并提示重登
+```
+
+---
+
+## 待办清单
+
+### Channel
+
+- [ ] `channels/base.py`：`publish()` /（预留）`read_comments` 等空方法
+- [ ] `channels/tiktok.py`：实现 `publish()`
+- [ ] Worker：按 `platform` 路由到对应 Channel
+
+### 发布编排
+
+- [ ] 执行前检查账号 ACTIVE + session 大致有效；无效则 FAILED（提示 `open-profile`）
+- [ ] 用 Variant + Account 填充 publish prompt
+- [ ] Observe → Act → Verify；关键步骤落截图
+- [ ] Verify：URL / 页面成功文案 / 结果页特征（至少一种可靠信号）
+
+### 失败处理
+
+- [ ] 分类：`LOGIN_REQUIRED` / `CAPTCHA_BLOCKED` / `UPLOAD_TIMEOUT` / `UI_CHANGED` / `UNKNOWN`
+- [ ] `CAPTCHA_BLOCKED` / `LOGIN_REQUIRED`：不重试破解；引导用户重登后手动 `retry`
+- [ ] 可恢复错误按 max_retries 退避；不可恢复可直接 DEAD 或 FAILED
+
+### 冒烟
+
+- [ ] `scripts/smoke_publish.py`：创建 Job → 等待 SUCCESS
+- [ ] 执行期间不要求人工点击发布流程
+
+---
+
+## 验收标准
+
+1. ACTIVE 账号 + READY Variant → 创建 Job → **无人值守** → TikTok 出现视频  
+2. Job = SUCCESS，execution 截图可回放  
+3. 人为制造未登录：Job FAILED，且错误指向重新登录，而非一直空转  
+4. 连续 3 次冒烟成功率 ≥ 2/3（环境允许前提下）  
+
+## 完成定义
+
+TikTok 真发帖闭环成立 → 进入 **0.1.8**

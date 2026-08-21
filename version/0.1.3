@@ -1,0 +1,89 @@
+# v0.1.3 — 账号池 + Browser Profile
+
+**依赖：** 0.1.2  
+**对应里程碑：** M2  
+**目标：** 账号与浏览器 Profile 绑定；首次登录由用户完成人机校验；登录态持久化后供后续全自动发布使用。
+
+---
+
+## 本版本负责（In Scope）
+
+- `accounts` 表 CRUD
+- Profile 目录管理（`data/profiles/{name}/`）
+- 打开 Profile 供用户手动登录
+- 账号状态：`PENDING_LOGIN` → `ACTIVE` / `DISABLED`
+- 启动前「是否仍登录」探测接口（平台探测可先做 TikTok 或通用「打开后人工确认」）
+
+## 本版本不负责（Out of Scope）
+
+- 发布任务、内容上传
+- Agent 自动登录、破解验证码
+- Channel.publish 实现
+
+---
+
+## 架构边界
+
+```text
+Account Pool          Browser Profile
+────────────          ───────────────
+account_id            profiles/tiktok_001/
+platform       ───→   （仅路径引用）
+account_name
+status
+❌ password           ❌ 平台 DOM 操作逻辑
+```
+
+- Account **不等于** Device，也 **不等于** Channel  
+- 系统 **不存平台密码**  
+- 人机校验 **只允许** 出现在本版本引导的登录流程中  
+
+---
+
+## 产品约束（必须遵守）
+
+```text
+首次登录 / 登录失效重登 → 用户手动登录 + 人机校验
+日常发布（后续版本）   → 全自动，不再做人机校验
+```
+
+---
+
+## 待办清单
+
+### 数据与服务
+
+- [ ] `accounts` 模型字段：platform、account_name、browser_profile、persona、language、description、status、metadata_json
+- [ ] `AccountService`：创建时自动分配/创建空 Profile 目录
+- [ ] 禁止 API / DB 出现 password 字段
+
+### API
+
+- [ ] `GET/POST /api/accounts`
+- [ ] `GET/PATCH /api/accounts/{id}`
+- [ ] `POST /api/accounts/{id}/open-profile`：启动持久化浏览器 Context
+- [ ] `POST /api/accounts/{id}/mark-active`：用户确认登录完成后调用
+- [ ] （建议）`POST /api/accounts/{id}/check-session`：探测登录态；失效则提示重登
+
+### 脚本
+
+- [ ] `scripts/launch_profile.py`：CLI 打开指定 Profile，方便无 UI 调试
+
+### Playwright 能力（仅登录引导）
+
+- [ ] 使用 persistent context 写入 `data/profiles/...`
+- [ ] 关闭后再开，Cookie/Session 仍在
+- [ ] **不**在本版本实现上传/发帖自动化
+
+---
+
+## 验收标准
+
+1. 创建 TikTok 账号 → 打开 Profile → 用户完成登录与人机校验 → `mark-active`  
+2. 关闭浏览器后再次 `open-profile`，**无需重新登录**  
+3. DB 中无密码；仅有 `browser_profile` 路径  
+4. 文档写清：人机校验仅此步骤需要用户  
+
+## 完成定义
+
+登录态可持久化 → 进入 **0.1.4**

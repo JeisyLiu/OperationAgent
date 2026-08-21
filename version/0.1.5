@@ -1,0 +1,98 @@
+# v0.1.5 — 发布队列 + Scheduler（Mock 执行）
+
+**依赖：** 0.1.4  
+**对应里程碑：** M4  
+**目标：** PublishJob 状态机与单机 Worker 跑通；用 MockAgent 验证队列，不依赖真实浏览器发帖。
+
+---
+
+## 本版本负责（In Scope）
+
+- `publish_jobs` / `execution_logs` 表
+- Job CRUD：创建、取消、手动重试、查询日志
+- Scheduler Worker：轮询到期 PENDING 任务
+- 事务认领，防止双执行
+- `MockAgentAdapter`：模拟成功/失败/重试
+- 执行产物目录：`data/execution/{job_id}/`
+
+## 本版本不负责（Out of Scope）
+
+- 真实 Playwright 发帖
+- 真实 Hermes/OpenClaw 调用
+- TikTokChannel 业务细节（可留空接口）
+
+---
+
+## 架构边界
+
+```text
+JobService ──→ Publish Queue (SQLite)
+                    ↓
+               Scheduler Worker
+                    ↓
+              AgentAdapter.execute()   ← 本版本只接 Mock
+                    ↓
+              execution_logs + screenshots(fake)
+```
+
+- Worker **只**依赖 `AgentAdapter` 接口  
+- Channel / Runtime **本版本不接入真实实现**  
+- 业务层禁止 `import hermes` / `import playwright`
+
+---
+
+## 状态机（必须实现）
+
+```text
+PENDING → CLAIMED → EXECUTING → VERIFYING → SUCCESS
+                         ↓
+                      FAILED → RETRY →（回到 PENDING 或延期）
+                         ↓
+                       DEAD（超过 max_retries）
+```
+
+---
+
+## 待办清单
+
+### 数据
+
+- [ ] `publish_jobs` 全字段（含 scheduled_at、retry_count、max_retries、result_json、时间戳）
+- [ ] `execution_logs`：job_id、step、message、screenshot_path
+- [ ] 创建 Job 时冗余写入 platform、browser_profile 快照（避免账号改动影响历史）
+
+### API
+
+- [ ] `GET/POST /api/jobs`
+- [ ] `GET /api/jobs/{id}`
+- [ ] `POST /api/jobs/{id}/cancel`
+- [ ] `POST /api/jobs/{id}/retry`
+- [ ] `GET /api/jobs/{id}/logs`
+
+### Worker
+
+- [ ] 后台循环：查询 `status=PENDING AND scheduled_at <= now`
+- [ ] SQLite 事务认领：`UPDATE … WHERE id=? AND status='PENDING'`，检查 rowcount
+- [ ] 单进程锁文件，避免多 Worker 抢同一库
+- [ ] 失败退避：如 1m / 5m / 15m 后进入 RETRY/PENDING
+- [ ] CLAIMED/EXECUTING 超时回收为 RETRY
+
+### MockAdapter
+
+- [ ] `execute(task)`：写步骤日志，可选随机失败
+- [ ] `stop()` / `get_status()` 最小实现
+- [ ] 产出假截图文件以打通目录约定
+
+---
+
+## 验收标准
+
+1. 创建 2 个到期 Job，Worker 自动认领并跑完  
+2. 人为制造失败时，按次数重试直至 DEAD  
+3. 同一 Job 不会被并发执行两次  
+4. `/api/jobs/{id}/logs` 可回看步骤  
+5. 全程不启动真实发帖浏览器自动化  
+
+## 完成定义
+
+队列与状态机稳定 → 进入 **0.1.6**

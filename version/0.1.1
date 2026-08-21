@@ -1,0 +1,77 @@
+# v0.1.1 — 工程脚手架 + 进程骨架
+
+**状态：** 当前版本  
+**对应里程碑：** M0  
+**依赖：** 无  
+**目标：** 仓库可安装、服务可启动，目录与分层边界就位；不含业务逻辑。
+
+---
+
+## 本版本负责（In Scope）
+
+- Python 项目初始化（venv / 依赖锁定）
+- FastAPI 应用入口与配置骨架
+- 推荐目录结构落地（api / services / db / agent / runtime / channels 空包）
+- 本地数据目录约定（`data/` gitignore）
+- `GET /health` 健康检查
+- 基础 README：如何安装与启动
+
+## 本版本不负责（Out of Scope）
+
+- 数据库表与业务 API
+- Playwright / Agent / Channel 实现
+- 前端 UI
+
+---
+
+## 架构边界
+
+```text
+backend/app/
+├── main.py          ← 本版本交付
+├── config.py        ← 本版本交付（路径、环境变量）
+├── api/             ← 仅 health
+├── services/        ← 空包占位
+├── db/              ← 空包占位
+├── agent/           ← 空包占位（禁止写具体 Agent）
+├── runtime/         ← 空包占位
+└── channels/        ← 空包占位
+```
+
+原则：先立「层」，再填「实现」。后续版本只能向对应层填充，不得跨层直连。
+
+---
+
+## 待办清单
+
+### 工程
+
+- [ ] 创建 `pyproject.toml` 或 `requirements.txt`
+- [ ] 锁定核心依赖：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（先声明，本版本可不建表）
+- [ ] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、`profiles/` 运行产物
+- [ ] 提供 `.env.example`（仅占位项：`APP_DATA_DIR`、`DATABASE_URL`）
+
+### 应用骨架
+
+- [ ] `backend/app/main.py`：创建 FastAPI app，挂载 router
+- [ ] `backend/app/config.py`：读取环境变量，解析 `data/` 根路径
+- [ ] `GET /health` → `{ "status": "ok", "version": "0.1.1" }`
+- [ ] 各业务包建立 `__init__.py` 占位，避免后续 import 混乱
+
+### 文档
+
+- [ ] README：安装 Python、创建 venv、安装依赖、启动 uvicorn 步骤
+- [ ] 在 README 中注明版本路线见 `version/README.md`
+
+---
+
+## 验收标准
+
+1. `uvicorn backend.app.main:app`（或等价命令）可启动无报错  
+2. 访问 `/health` 返回 200 且含版本号 `0.1.1`  
+3. 目录结构与 `TODO.md` 推荐结构一致（允许微调命名）  
+4. `data/` 不进入 git  
+
+## 完成定义
+
+脚手架可演示 → 进入 **0.1.2**
