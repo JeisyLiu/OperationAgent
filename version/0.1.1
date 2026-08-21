@@ -27,8 +27,10 @@
 
 ## 架构边界
 
+本机单进程 + SQLite（`data/app.db`），非云端后端；FastAPI 仅绑定 `127.0.0.1` 供本地 UI/脚本调用。
+
 ```text
-backend/app/
+app/
 ├── main.py          ← 本版本交付
 ├── config.py        ← 本版本交付（路径、环境变量）
 ├── api/             ← 仅 health
@@ -48,23 +50,23 @@ backend/app/
 
 ### 工程
 
-- [ ] 创建 `pyproject.toml` 或 `requirements.txt`
-- [ ] 锁定核心依赖声明：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（本版本可不建表）
-- [ ] 预留后续依赖注释：`playwright`、`browser-use`（安装可放到 0.1.3/0.1.6）
-- [ ] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、运行产物
-- [ ] 提供 `.env.example`（`APP_DATA_DIR`、`DATABASE_URL`、`AGENT_ADAPTER`）
+- [x] 创建 `pyproject.toml` 或 `requirements.txt`
+- [x] 锁定核心依赖声明：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（本版本可不建表）
+- [x] 预留后续依赖注释：`playwright`、`browser-use`（安装可放到 0.1.3/0.1.6）
+- [x] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、运行产物
+- [x] 提供 `.env.example`（`APP_DATA_DIR`、`DATABASE_URL`、`AGENT_ADAPTER`）
 
 ### 应用骨架
 
-- [ ] `backend/app/main.py`：创建 FastAPI app，挂载 router
-- [ ] `backend/app/config.py`：读取环境变量，解析 `data/` 根路径
-- [ ] `GET /health` → `{ "status": "ok", "version": "0.1.1" }`
-- [ ] 各业务包建立 `__init__.py` 占位
+- [x] `app/main.py`：创建 FastAPI app，挂载 router
+- [x] `app/config.py`：读取环境变量，解析 `data/` 根路径
+- [x] `GET /health` → `{ "status": "ok", "version": "0.1.1" }`
+- [x] 各业务包建立 `__init__.py` 占位
 
 ### 文档
 
-- [ ] README：安装 Python、venv、依赖、启动 uvicorn
-- [ ] README 注明版本路线 `version/README.md` 与自研/复用 `version/BUILD_VS_BUY.md`
+- [x] README：安装 Python、venv、依赖、启动 uvicorn
+- [x] README 注明版本路线 `version/README.md` 与自研/复用 `version/BUILD_VS_BUY.md`
 
 ---
 

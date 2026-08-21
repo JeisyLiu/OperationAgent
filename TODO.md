@@ -1217,6 +1217,8 @@ MVP 冻结                →  version/0.2.0
 
 ## 27.3 推荐目录结构
 
+**M0 交付边界（`version/0.1.1`）：** 本机单进程 + SQLite（`data/app.db`），非云端后端。本阶段只交付根目录 `app/` 下的 `main.py`、`config.py`、`api/`（仅 health）及 `services/` / `db/` / `agent/` / `runtime/` / `channels/` 空包占位；数据库表、业务 API、Channel、Agent SDK、前端 UI 均属于后续版本。下列全量树为 MVP 终态参考，落地时先立「层」，再向对应层填充实现。
+
 落地时按下列结构初始化仓库（与设计解耦层一致）：
 
 ```text
@@ -1230,45 +1232,44 @@ OperationAgent/
 │   ├── content/                   # 内容文件
 │   ├── profiles/                  # 浏览器 Profile
 │   └── execution/                 # 任务截图与日志
-├── backend/
-│   ├── app/
-│   │   ├── main.py                # FastAPI 入口
-│   │   ├── config.py
-│   │   ├── db/
-│   │   │   ├── session.py
-│   │   │   ├── models.py
-│   │   │   └── migrations/        # 可用 Alembic，或首版简单建表脚本
-│   │   ├── api/                   # REST 路由
-│   │   │   ├── settings.py
-│   │   │   ├── accounts.py
-│   │   │   ├── content.py
-│   │   │   ├── jobs.py
-│   │   │   └── history.py
-│   │   ├── services/              # 业务服务
-│   │   │   ├── account_service.py
-│   │   │   ├── content_service.py
-│   │   │   ├── job_service.py
-│   │   │   └── settings_service.py
-│   │   ├── scheduler/
-│   │   │   └── worker.py          # PENDING → CLAIM → EXECUTE
-│   │   ├── agent/
-│   │   │   ├── base.py                 # AgentAdapter 抽象
-│   │   │   ├── browser_use_adapter.py  # MVP 默认
-│   │   │   ├── stagehand_adapter.py   # 可选
-│   │   │   ├── hermes_adapter.py      # 可选后补
-│   │   │   ├── openclaw_adapter.py    # 可选后补
-│   │   │   └── mock_adapter.py        # 联调用 Mock
-│   │   ├── runtime/
-│   │   │   ├── base.py                 # ComputerRuntime 薄抽象
-│   │   │   └── playwright_runtime.py   # Profile 启停/截图等
-│   │   ├── channels/
-│   │   │   ├── base.py            # Channel 抽象
-│   │   │   ├── tiktok.py
-│   │   │   ├── youtube.py
-│   │   │   └── reddit.py
-│   │   └── prompts/
-│   │       └── publish_task.md    # 传给 Agent 的任务模板
-│   └── tests/
+├── app/
+│   ├── main.py                # 本机 FastAPI 入口（127.0.0.1）
+│   ├── config.py
+│   ├── db/
+│   │   ├── session.py
+│   │   ├── models.py
+│   │   └── migrations/        # 可用 Alembic，或首版简单建表脚本
+│   ├── api/                   # REST 路由
+│   │   ├── settings.py
+│   │   ├── accounts.py
+│   │   ├── content.py
+│   │   ├── jobs.py
+│   │   └── history.py
+│   ├── services/              # 业务服务
+│   │   ├── account_service.py
+│   │   ├── content_service.py
+│   │   ├── job_service.py
+│   │   └── settings_service.py
+│   ├── scheduler/
+│   │   └── worker.py          # PENDING → CLAIM → EXECUTE
+│   ├── agent/
+│   │   ├── base.py                 # AgentAdapter 抽象
+│   │   ├── browser_use_adapter.py  # MVP 默认
+│   │   ├── stagehand_adapter.py   # 可选
+│   │   ├── hermes_adapter.py      # 可选后补
+│   │   ├── openclaw_adapter.py    # 可选后补
+│   │   └── mock_adapter.py        # 联调用 Mock
+│   ├── runtime/
+│   │   ├── base.py                 # ComputerRuntime 薄抽象
+│   │   └── playwright_runtime.py   # Profile 启停/截图等
+│   ├── channels/
+│   │   ├── base.py            # Channel 抽象
+│   │   ├── tiktok.py
+│   │   ├── youtube.py
+│   │   └── reddit.py
+│   └── prompts/
+│       └── publish_task.md    # 传给 Agent 的任务模板
+├── tests/
 ├── frontend/                      # React+Vite 或 FastAPI 静态页（二选一）
 │   └── ...
 └── scripts/
@@ -1374,133 +1375,361 @@ OperationAgent/
 
 ## 27.5 分阶段任务清单
 
-### M0｜工程脚手架（Week 0，1～2 天）
+### M0｜工程脚手架（Week 0，1～2 天）→ [`version/0.1.1`](./version/0.1.1)
 
-**目标：** 可运行的空壳服务。
+**目标：** 仓库可安装、服务可启动，目录与分层边界就位；不含业务逻辑。
 
-- [ ] 初始化 Python 项目（`pyproject.toml` / venv / 依赖锁定）
-- [ ] 安装核心依赖：FastAPI、SQLAlchemy、Playwright、uvicorn、pydantic-settings
-- [ ] 创建目录结构与 `.gitignore`（`data/`、`.env`、`profiles/`）
-- [ ] `GET /health` 返回 200
-- [ ] 写 `README`：如何启动后端
+**本版本不负责：** 数据库表与业务 API；Playwright / browser-use / Channel 实现；前端 UI。
 
-**验收：** `uvicorn` 启动成功，health 正常。
+#### 工程
 
----
+- [x] 创建 `pyproject.toml` 或 `requirements.txt`
+- [x] 锁定核心依赖声明：`fastapi`、`uvicorn`、`pydantic-settings`、`sqlalchemy`（本版本可不建表）
+- [x] 预留后续依赖注释：`playwright`、`browser-use`（安装可放到 0.1.3 / 0.1.6）
+- [x] 配置 `.gitignore`：`data/`、`.env`、`__pycache__/`、`.venv/`、运行产物
+- [x] 提供 `.env.example`（`APP_DATA_DIR`、`DATABASE_URL`、`AGENT_ADAPTER`）
 
-### M1｜数据层 + Settings API（Week 1）
+#### 应用骨架
 
-**目标：** 本地库可读写，AI 配置可保存。
+- [x] `app/main.py`：创建 FastAPI app，挂载 router
+- [x] `app/config.py`：读取环境变量，解析 `data/` 根路径
+- [x] `GET /health` → `{ "status": "ok", "version": "0.1.1" }`
+- [x] 各业务包建立 `__init__.py` 占位（`api` / `services` / `db` / `agent` / `runtime` / `channels`）
 
-- [ ] 实现 SQLAlchemy models + `init_db`
-- [ ] Settings CRUD：保存/读取 Provider、API Key、Base URL、Model
-- [ ] API Key 本地加密（如 Fernet + 本机密钥文件），响应中脱敏
-- [ ] `LLMProvider` 抽象 + 一次真实连通性探测（chat 一句）
-- [ ] 单元测试：settings 读写
+#### 文档
 
-**验收：** 配置 Key 后调用 `/settings/test` 成功返回模型回复。
+- [x] README：安装 Python、venv、依赖、启动 uvicorn
+- [x] README 注明版本路线 [`version/README.md`](./version/README.md) 与自研/复用 [`version/BUILD_VS_BUY.md`](./version/BUILD_VS_BUY.md)
 
-**API 草案：**
+**验收：**
 
-```text
-GET/PUT  /api/settings/ai
-POST     /api/settings/ai/test
-```
+1. `uvicorn` 启动无报错
+2. `/health` 返回 200 且含版本号 `0.1.1`
+3. 目录分层与设计一致（允许微调命名）
+4. `data/` 不进入 git
 
----
-
-### M2｜账号池 + Browser Profile（Week 2）
-
-**目标：** 账号与 Profile 绑定；**首次登录由用户完成人机校验**，登录态持久化后供后续全自动发布使用。
-
-- [ ] Accounts CRUD（按 platform 过滤）
-- [ ] `scripts/launch_profile.py`：用 Playwright 持久化 Context 打开指定 Profile 目录
-- [ ] API：创建账号 → 返回 profile 路径 → 触发「打开浏览器登录」（唯一需用户交互的引导入口）
-- [ ] API：标记账号 ACTIVE（用户确认已登录且人机校验完成后）
-- [ ] 启动发布前可做「是否仍登录」探测（未登录则阻断并提示重新 `open-profile`）
-- [ ] 禁止任何密码字段入库
-
-**验收：** 打开 Profile → 用户完成首次登录与人机校验 → 关闭后再次打开**无需再登录**；二次打开过程中用户无需操作。
-**API 草案：**
-
-```text
-GET/POST     /api/accounts
-GET/PATCH    /api/accounts/{id}
-POST         /api/accounts/{id}/open-profile
-POST         /api/accounts/{id}/mark-active
-```
+**完成定义：** 脚手架可演示 → 进入 **0.1.2**
 
 ---
 
-### M3｜内容池 + Content Variant（Week 3）
+### M1｜数据层 + AI Settings（Week 1）→ [`version/0.1.2`](./version/0.1.2)
 
-**目标：** 视频入库，可生成平台变体（首版可手工填写，不必 AI 生成）。
+**目标：** SQLite 可读写；AI Provider 配置可保存、可脱敏读取、可连通性探测。
 
-- [ ] 上传视频到 `data/content/`，写 `content_assets`
-- [ ] 创建/编辑 Variant（platform、title、caption、hashtags）
-- [ ] Asset / Variant / Job 三者模型分离，禁止混表
-- [ ] 列表与详情 API
+**本版本不负责：** 账号 / 内容 / 任务 API；Agent 执行、浏览器操作；前端 Settings 页（可 curl/API 验收）；完整自研 Provider 插件体系。
 
-**验收：** 上传 1 个 mp4，为 TikTok 创建 Variant，状态 READY。
-
-**API 草案：**
+**架构边界：**
 
 ```text
-GET/POST     /api/content/assets
-POST         /api/content/assets/{id}/upload
-GET/POST     /api/content/variants
-GET/PATCH    /api/content/variants/{id}
+api/settings.py  →  services/settings_service.py  →  db/models(ai_settings)
+                                              ↘
+                                         llm/client.py（薄封装，复用 SDK）
 ```
+
+- API 层不直接碰加密细节
+- Key 禁止写入日志、禁止明文出现在 API 响应（仅脱敏）
+- 为 0.1.6 browser-use 预留：能读出 provider / base_url / model / decrypted key
+
+#### 数据
+
+- [ ] `app/db/session.py`：SQLite 引擎与 Session
+- [ ] `app/db/models.py`：至少 `AiSettings`；建议同步建好后续表结构
+- [ ] `scripts/init_db.py`：一键建表
+
+#### Settings
+
+- [ ] `GET /api/settings/ai`：返回 provider / base_url / model / api_key 脱敏
+- [ ] `PUT /api/settings/ai`：保存配置
+- [ ] `POST /api/settings/ai/test`：发一条最小 chat，验证连通
+- [ ] API Key：Fernet（或同等）本地加密；密钥文件放 `data/`，不进仓库
+
+#### LLM 薄封装
+
+- [ ] 统一 `chat(messages) -> str`（或等价）
+- [ ] 使用 OpenAI 兼容客户端或 LiteLLM，覆盖兼容网关
+- [ ] 由 settings 选择 base_url / model，业务不写死厂商名
+
+#### 测试
+
+- [ ] 单元测试：settings 读写、Key 脱敏、加密往返
+
+**验收：**
+
+1. 写入 AI 配置后重启进程仍可读取
+2. `/api/settings/ai/test` 在有效 Key 下返回模型回复摘要
+3. 响应与日志中看不到完整 API Key
+4. 更换 `base_url` / `model` 无需改代码
+
+**完成定义：** Settings 可测通 → 进入 **0.1.3**
 
 ---
 
-### M4｜发布队列 + Scheduler Worker（Week 4）
+### M2｜账号池 + Browser Profile（Week 2）→ [`version/0.1.3`](./version/0.1.3)
 
-**目标：** 无 Agent 也能把 Job 状态机跑通（用 MockAdapter）。
+**目标：** 账号与浏览器 Profile 绑定；首次登录由用户完成人机校验；登录态持久化后供后续全自动发布使用。
 
-- [ ] PublishJob 创建（绑定 account + variant + scheduled_at）
-- [ ] Worker 循环：查询 `PENDING AND scheduled_at <= now`
-- [ ] 状态机：PENDING → CLAIMED → EXECUTING → SUCCESS / FAILED → RETRY → DEAD
-- [ ] 重试退避（如 1m / 5m / 15m）
-- [ ] `MockAgentAdapter`：写假日志与截图目录，模拟成功/失败
-- [ ] 执行记录写入 `execution_logs` + `data/execution/{job_id}/`
+**本版本不负责：** 发布任务、内容上传；Agent 自动登录、破解验证码；Channel.publish 实现；**本版本不接 browser-use**（留给 0.1.6）。
 
-**验收：** 创建 2 个 Job，Worker 自动认领并完成；失败 Job 可重试至 DEAD。
-
-**API 草案：**
+**架构边界：**
 
 ```text
-GET/POST     /api/jobs
-GET          /api/jobs/{id}
-POST         /api/jobs/{id}/cancel
-POST         /api/jobs/{id}/retry
-GET          /api/jobs/{id}/logs
+Account Pool          Browser Profile
+────────────          ───────────────
+account_id            profiles/tiktok_001/
+platform       ───→   （仅路径引用）
+account_name
+status
+❌ password           ❌ 平台 DOM 操作逻辑
 ```
+
+- Account **不等于** Device，也 **不等于** Channel
+- 系统 **不存平台密码**
+- 人机校验 **只允许** 出现在本版本引导的登录流程中
+
+**产品约束：**
+
+```text
+首次登录 / 登录失效重登 → 用户手动登录 + 人机校验
+日常发布（后续版本）   → 全自动，不再做人机校验
+```
+
+#### 数据与服务
+
+- [ ] `accounts` 模型字段：platform、account_name、browser_profile、persona、language、description、status、metadata_json
+- [ ] `AccountService`：创建时自动分配/创建空 Profile 目录
+- [ ] 禁止 API / DB 出现 password 字段
+- [ ] 账号状态：`PENDING_LOGIN` → `ACTIVE` / `DISABLED`
+
+#### API
+
+- [ ] `GET/POST /api/accounts`
+- [ ] `GET/PATCH /api/accounts/{id}`
+- [ ] `POST /api/accounts/{id}/open-profile`：启动持久化浏览器 Context
+- [ ] `POST /api/accounts/{id}/mark-active`：用户确认登录完成后调用
+- [ ] （建议）`POST /api/accounts/{id}/check-session`：探测登录态；失效则提示重登
+
+#### 脚本
+
+- [ ] `scripts/launch_profile.py`：CLI 打开指定 Profile，方便无 UI 调试
+
+#### Playwright 能力（仅登录引导）
+
+- [ ] 本版本安装 Playwright；使用 persistent context 写入 `data/profiles/...`
+- [ ] 关闭后再开，Cookie/Session 仍在
+- [ ] **不**在本版本实现上传/发帖自动化
+
+**验收：**
+
+1. 创建 TikTok 账号 → 打开 Profile → 用户完成登录与人机校验 → `mark-active`
+2. 关闭浏览器后再次 `open-profile`，**无需重新登录**
+3. DB 中无密码；仅有 `browser_profile` 路径
+4. 文档写清：人机校验仅此步骤需要用户
+
+**完成定义：** 登录态可持久化 → 进入 **0.1.4**
 
 ---
 
-### M5｜Computer Runtime + AgentAdapter（Week 5）
+### M3｜内容池 + Content Variant（Week 3）→ [`version/0.1.4`](./version/0.1.4)
 
-**目标：** 以 **browser-use** 为默认真实 Adapter；业务只依赖 `AgentAdapter`；完成「已登录 Profile → 观察/截图」级能力。
+**目标：** 媒体资产入库；同一 Asset 可拆出平台 Variant；与 PublishJob 严格分离。
 
-- [ ] `AgentAdapter`：`execute(task)` / `stop()` / `pause()` / `get_status()`
-- [ ] `BrowserUseAdapter`（默认）：绑定 persistent Profile + 本地 LLM 配置
-- [ ] `ComputerRuntime` 薄接口 + `PlaywrightRuntime`（Profile 启停/截图目录约定；可与 browser-use 共享 session）
-- [ ] 保留 `MockAgentAdapter` 供回归
-- [ ] 任务 Prompt 模板（见第十五节），只传业务语义，不传 DB 结构
-- [ ] 执行中持续落盘 step 截图
-- [ ] **不做**：CustomAgent 主路径；OCR/PyAutoGUI
+**本版本不负责：** AI 自动生成多平台文案（第二阶段）；创建 PublishJob / 调度执行；平台 Channel 逻辑。
 
-**验收：** 给定「打开已登录站点并截图/完成简单页面操作」任务，BrowserUseAdapter 可跑通。
-
-**选型决策（已定默认，仅失败时降级）：**
+**架构边界：**
 
 ```text
-P0  browser-use
-P1  Stagehand（browser-use 集成失败或不稳时）
-P2  Hermes / OpenClaw（可选第二后端）
-P3  CustomAgentAdapter（尽量不做）
+ContentAsset          ContentVariant           PublishJob
+────────────          ──────────────           ──────────
+视频/图/基础文案  →   某平台标题/标签/裁剪   →  （下一版本才出现）
+status=READY          status=READY
 ```
+
+三者禁止混表、禁止在 Asset 上直接挂「已发布 URL」作为主状态。
+
+#### 数据
+
+- [ ] `content_assets`：title、media_type、file_path、base_caption、language、category、status
+- [ ] `content_variants`：asset_id、platform、title、caption、hashtags_json、media_path、extra_json、status
+- [ ] 文件落盘：`data/content/{asset_id}/...`，DB 只存相对路径
+
+#### API
+
+- [ ] `GET/POST /api/content/assets`
+- [ ] `POST /api/content/assets/{id}/upload`：multipart 上传
+- [ ] `GET/POST /api/content/variants`
+- [ ] `GET/PATCH /api/content/variants/{id}`
+- [ ] 删除/禁用策略明确（软删或 status 即可）
+
+#### 服务规则
+
+- [ ] 创建 Variant 时校验 Asset 存在且文件可读
+- [ ] 首版允许 Variant.media_path 复用 Asset.file_path（不做转码）
+- [ ] platform 枚举先支持：`tiktok`（预留 `youtube` / `reddit`）
+
+#### 测试
+
+- [ ] 上传小视频 → 建 TikTok Variant → 列表可查
+
+**验收：**
+
+1. 上传 1 个 mp4，Asset = READY
+2. 为其创建 TikTok Variant（标题/正文/标签齐全）
+3. Asset 与 Variant ID 分离，修改 Variant 不影响 Asset 原文案
+4. 仍无法「一键发布」（发布属后续版本）
+
+**完成定义：** 内容与变体可管理 → 进入 **0.1.5**
+
+---
+
+### M4｜发布队列 + Scheduler（Mock 执行）（Week 4）→ [`version/0.1.5`](./version/0.1.5)
+
+**目标：** PublishJob 状态机与单机 Worker 跑通；用 MockAgent 验证队列，**不依赖** browser-use / 真实发帖。
+
+**本版本不负责：** 真实 browser-use / Playwright 发帖；TikTokChannel 业务细节（可留空接口）；前端。
+
+**架构边界：**
+
+```text
+JobService ──→ Publish Queue (SQLite)
+                    ↓
+               Scheduler Worker
+                    ↓
+              AgentAdapter.execute()   ← 本版本只接 Mock
+                    ↓
+              execution_logs + screenshots(fake)
+```
+
+- Worker **只**依赖 `AgentAdapter` 接口
+- 业务层禁止 `import browser_use` / `import playwright`
+- 真实 Adapter 放到 **0.1.6**
+
+**状态机（必须实现）：**
+
+```text
+PENDING → CLAIMED → EXECUTING → VERIFYING → SUCCESS
+                         ↓
+                      FAILED → RETRY →（回到 PENDING 或延期）
+                         ↓
+                       DEAD（超过 max_retries）
+```
+
+#### 数据
+
+- [ ] `publish_jobs` 全字段（含 scheduled_at、retry_count、max_retries、result_json、时间戳）
+- [ ] `execution_logs`：job_id、step、message、screenshot_path
+- [ ] 创建 Job 时冗余写入 platform、browser_profile 快照
+
+#### API
+
+- [ ] `GET/POST /api/jobs`
+- [ ] `GET /api/jobs/{id}`
+- [ ] `POST /api/jobs/{id}/cancel`
+- [ ] `POST /api/jobs/{id}/retry`
+- [ ] `GET /api/jobs/{id}/logs`
+
+#### Worker
+
+- [ ] 后台循环：查询 `status=PENDING AND scheduled_at <= now`
+- [ ] SQLite 事务认领：`UPDATE … WHERE id=? AND status='PENDING'`，检查 rowcount
+- [ ] 单进程锁文件，避免多 Worker 抢同一库
+- [ ] 失败退避：如 1m / 5m / 15m
+- [ ] CLAIMED/EXECUTING 超时回收为 RETRY
+- [ ] 调度用 asyncio 循环或 APScheduler（不要 Celery/Redis）
+
+#### MockAdapter
+
+- [ ] `execute(task)`：写步骤日志，可选随机失败
+- [ ] `stop()` / `get_status()` 最小实现
+- [ ] 产出假截图文件以打通目录约定
+
+**验收：**
+
+1. 创建 2 个到期 Job，Worker 自动认领并跑完
+2. 人为制造失败时，按次数重试直至 DEAD
+3. 同一 Job 不会被并发执行两次
+4. `/api/jobs/{id}/logs` 可回看步骤
+5. 全程不启动真实发帖浏览器自动化
+
+**完成定义：** 队列与状态机稳定 → 进入 **0.1.6**
+
+---
+
+### M5｜AgentAdapter + browser-use（默认）（Week 5）→ [`version/0.1.6`](./version/0.1.6)
+
+**目标：** 以 **browser-use** 为默认真实 Agent；业务只依赖 `AgentAdapter`；打通「已登录 Profile → 观察/简单操作/截图」。
+
+**本版本不负责：** 完整 TikTok 发帖 SUCCESS（属 0.1.7）；自研 CustomAgent 主路径；OCR / OpenCV / PyAutoGUI；Hermes / OpenClaw（可留空文件，不作为本版本验收项）；UI。
+
+**架构边界：**
+
+```text
+Scheduler / Channel
+        ↓
+AgentAdapter.execute(task)     ← 自研薄胶水
+        ↓
+BrowserUseAdapter              ← 复用 browser-use（默认）
+        ↓
+Playwright + Browser Profile（已登录）
+```
+
+```text
+❌ JobService 直接 import browser_use / playwright 散落调用
+❌ Channel 写死 CSS 选择器发帖脚本（首版交给 Agent）
+❌ 本版本引入 OCR/坐标点击
+✅ 一律经 AgentAdapter；Runtime 只做约定与必要启停
+```
+
+**Agent 选型（已定默认）：**
+
+| 优先级 | Adapter | 本版本 |
+|--------|---------|--------|
+| P0 | BrowserUseAdapter | **必做** |
+| P1 | StagehandAdapter | 可选，P0 失败再上 |
+| P2 | Hermes / OpenClaw | 不阻塞 |
+| P3 | CustomAgentAdapter | **尽量不做** |
+
+配置：`AGENT_ADAPTER=browser_use`
+
+#### AgentAdapter
+
+- [ ] 接口：`execute(task)` / `pause()` / `stop()` / `get_status()`
+- [ ] `MockAgentAdapter` 保持可用（回归队列）
+- [ ] `BrowserUseAdapter`：注入 LLM 配置（来自 Settings）、Profile 路径、任务文案
+- [ ] `execute` 入参为纯业务描述，不含 SQL/表名
+- [ ] 将浏览器/步骤截图落到 `data/execution/{job_id}/`
+
+#### Runtime 薄封装
+
+- [ ] `ComputerRuntime` 接口保留（screenshot/open/close 等）
+- [ ] `PlaywrightRuntime`：按需启动 persistent context；或对接 browser-use 已打开的 session
+- [ ] **不**实现第二套完整点击引擎
+
+#### Prompt
+
+- [ ] `app/prompts/publish_task.md` 落地
+- [ ] 遇人机校验/登录失效 → 立即 FAILED，不破解
+- [ ] 正常路径不等待人工确认
+
+#### 冒烟
+
+- [ ] 使用 0.1.3 已 ACTIVE 的 Profile：打开目标站 → 截图 → 返回成功依据
+- [ ] Stop 可中断正在执行的任务
+- [ ] 切换 Mock ↔ browser_use 无需改 JobService 核心代码
+
+#### 文档
+
+- [ ] README 写明依赖：`browser-use`、Playwright browsers 安装步骤
+- [ ] 指向 `version/BUILD_VS_BUY.md`
+
+**验收：**
+
+1. `AGENT_ADAPTER=browser_use` 下，已登录 Profile 可完成简单浏览任务并产出截图
+2. 同一 JobService，切换 Mock ↔ browser_use 无需改业务核心逻辑
+3. `stop()` 后不再继续操作浏览器
+4. 未引入 OCR/PyAutoGUI；未实现 CustomAgent 主路径
+5. 仍不要求 TikTok 上真实出现新视频（下版本验收）
+
+**完成定义：** BrowserUseAdapter 可跑通 → 进入 **0.1.7**
 
 ---
 
@@ -1595,7 +1824,7 @@ UI
 
 ## 27.8 Agent 任务模板（落地版）
 
-文件：`backend/app/prompts/publish_task.md`
+文件：`app/prompts/publish_task.md`
 
 占位符由 JobService 填充：
 
@@ -1665,12 +1894,39 @@ UI
 
 按顺序执行，勿跳步：
 
-1. **初始化仓库结构**（M0 / `0.1.1`）：Python 项目 + FastAPI + `GET /health`
-2. **建表脚本**（M1 / `0.1.2`）：`accounts / content_* / publish_jobs / execution_logs / ai_settings`
-3. **写 `launch_profile.py`**：尽早验证 Playwright 持久化登录（降低后期风险）
-4. **锁定默认 Agent**：`browser-use` + `AgentAdapter`；另开一页冒烟「已登录 Profile 打开目标站」
+1. **M0 / `0.1.1` — 工程脚手架**（已完成，详见 §27.5 与 [`version/0.1.1`](./version/0.1.1)）：
+   - [x] Python 项目 + 依赖锁定（`fastapi` / `uvicorn` / `pydantic-settings` / `sqlalchemy`；**不安装 Playwright**）
+   - [x] `.gitignore` + `.env.example` + `data/` 本地目录约定
+   - [x] `app/main.py` + `config.py` + 分层空包
+   - [x] `GET /health` 返回 `{ "status": "ok", "version": "0.1.1" }`
+   - [x] README 安装/启动说明 + 链到 `version/README.md` / `version/BUILD_VS_BUY.md`
 
-完成以上 4 项后，再进入 Accounts / Content / Queue 的业务开发。
+2. **M1 / `0.1.2` — 数据层 + AI Settings**（详见 §27.5 与 [`version/0.1.2`](./version/0.1.2)）：
+   - [ ] `app/db/session.py` + `models.py` + `scripts/init_db.py`（SQLite；建议一并建后续表）
+   - [ ] Settings API：`GET/PUT /api/settings/ai`、`POST /api/settings/ai/test`
+   - [ ] API Key Fernet 加密（密钥在 `data/`）；`app/llm/client.py` 薄封装
+   - [ ] 单元测试：读写、脱敏、加密往返
+
+3. **M2 / `0.1.3` — 账号池 + Profile**（详见 §27.5 与 [`version/0.1.3`](./version/0.1.3)；**此版本才装 Playwright**）：
+   - [ ] Accounts CRUD + `PENDING_LOGIN` → `ACTIVE`
+   - [ ] `open-profile` / `mark-active` / `check-session`
+   - [ ] `scripts/launch_profile.py`；Profile 持久化登录
+   - [ ] **不接 browser-use**
+
+4. **M3 / `0.1.4` — 内容池 + Variant**（详见 §27.5 与 [`version/0.1.4`](./version/0.1.4)）：
+   - [ ] Asset 上传至 `data/content/{asset_id}/`
+   - [ ] TikTok Variant CRUD；Asset / Variant / Job 三表分离
+
+5. **M4 / `0.1.5` — 队列 + MockAgent**（详见 §27.5 与 [`version/0.1.5`](./version/0.1.5)；**仍不装 browser-use**）：
+   - [ ] Job 状态机 + Worker 事务认领 + 单进程锁
+   - [ ] `MockAgentAdapter` 跑通队列；业务层禁止 `import browser_use`
+
+6. **M5 / `0.1.6` — BrowserUseAdapter**（详见 §27.5 与 [`version/0.1.6`](./version/0.1.6)）：
+   - [ ] `AgentAdapter` + `BrowserUseAdapter`（默认）+ Runtime 薄封装
+   - [ ] `app/prompts/publish_task.md`；已登录 Profile 冒烟截图
+   - [ ] `AGENT_ADAPTER=mock|browser_use` 可切换
+
+**依赖铁律：** M4 完成前禁止业务层 `import browser_use`；真发帖 SUCCESS 属 **0.1.7**。Playwright 在 0.1.3 安装，browser-use 在 0.1.6 安装。
 
 ---
 
@@ -1678,12 +1934,12 @@ UI
 
 ### Phase 状态
 
-- [ ] M0 脚手架完成
-- [ ] M1 Settings + DB 完成
-- [ ] M2 账号池 + Profile 完成
-- [ ] M3 内容池 + Variant 完成
-- [ ] M4 队列 + Scheduler + Mock 完成
-- [ ] M5 Runtime + AgentAdapter 完成
+- [x] M0 脚手架完成（验收见 [`version/0.1.1`](./version/0.1.1)）
+- [ ] M1 Settings + DB 完成（验收见 [`version/0.1.2`](./version/0.1.2)）
+- [ ] M2 账号池 + Profile 完成（验收见 [`version/0.1.3`](./version/0.1.3)）
+- [ ] M3 内容池 + Variant 完成（验收见 [`version/0.1.4`](./version/0.1.4)）
+- [ ] M4 队列 + Scheduler + Mock 完成（验收见 [`version/0.1.5`](./version/0.1.5)）
+- [ ] M5 Runtime + AgentAdapter 完成（验收见 [`version/0.1.6`](./version/0.1.6)）
 - [ ] M6 TikTok 真实发布闭环完成
 - [ ] M7 UI + 稳定性完成 → **MVP 发布**
 
