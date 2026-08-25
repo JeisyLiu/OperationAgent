@@ -7,7 +7,7 @@ from app.constants import classify_failure
 from app.platforms import require_platform
 from app.db.session import SessionLocal
 from app.runtime.playwright_runtime import PlaywrightRuntime
-from app.services.settings_service import settings_service
+from app.services.llm_model_service import llm_model_service
 
 logger = logging.getLogger(__name__)
 
@@ -87,16 +87,22 @@ class BrowserUseAdapter(AgentAdapter):
 
         db = SessionLocal()
         try:
-            secrets = settings_service.get_secrets(db)
+            primary = llm_model_service.get_primary_config(db)
         finally:
             db.close()
 
-        if secrets is None or not secrets.api_key:
+        if primary is None or not primary.api_key:
+            return None
+        if primary.provider != "openai":
+            logger.warning(
+                "Browser agent requires an enabled OpenAI-compatible model; primary is %s",
+                primary.provider,
+            )
             return None
 
-        llm_kwargs = {"api_key": secrets.api_key, "model": secrets.model or "gpt-4o-mini"}
-        if secrets.base_url:
-            llm_kwargs["base_url"] = secrets.base_url
+        llm_kwargs = {"api_key": primary.api_key, "model": primary.model or "gpt-4o-mini"}
+        if primary.base_url:
+            llm_kwargs["base_url"] = primary.base_url
         llm = ChatOpenAI(**llm_kwargs)
 
         browser = Browser(config=BrowserConfig(headless=False))

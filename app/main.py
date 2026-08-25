@@ -10,6 +10,7 @@ from app.api.accounts import router as accounts_router
 from app.api.content import router as content_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
+from app.api.llm_models import router as llm_models_router
 from app.api.settings import router as settings_router
 from app.api.platforms import router as platforms_router
 from app.api.worker import router as worker_router
@@ -43,6 +44,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(settings_router)
+app.include_router(llm_models_router)
 app.include_router(accounts_router)
 app.include_router(content_router)
 app.include_router(jobs_router)

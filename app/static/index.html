@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260825d" />
+  <link rel="stylesheet" href="/static/style.css?v=20260825e" />
 </head>
 <body>
   <div class="layout">
@@ -31,17 +31,28 @@
       </section>
 
       <section id="view-settings" class="view">
-        <h2>AI Settings</h2>
-        <form id="settings-form">
-          <label>Provider <input name="provider" value="openai" /></label>
-          <label>Base URL <input name="base_url" placeholder="https://api.openai.com/v1" /></label>
-          <label>Model <input name="model" value="gpt-4o-mini" /></label>
+        <h2>LLM Models</h2>
+        <p class="hint">Configure multiple models with alias, priority, and enable/disable. Lower priority number is tried first; failover uses the next enabled model.</p>
+        <form id="llm-model-form" class="publish-form">
+          <label>Alias <input name="alias" required placeholder="e.g. Qwen main" /></label>
+          <label>Provider
+            <select name="provider" required>
+              <option value="openai">openai</option>
+              <option value="qwen">qwen (DashScope)</option>
+            </select>
+          </label>
+          <label>Model <input name="model" placeholder="gpt-4o-mini / qwen-plus" /></label>
+          <label>Base URL <input name="base_url" placeholder="OpenAI only; leave empty for Qwen" /></label>
           <label>API Key <input name="api_key" type="password" autocomplete="off" /></label>
+          <label>Priority <input name="priority" type="number" value="0" /></label>
+          <label>Max concurrency <input name="max_concurrency" type="number" value="4" min="1" /></label>
+          <label>Timeout (sec) <input name="timeout_sec" type="number" value="60" min="5" /></label>
+          <label><input type="checkbox" name="enabled" checked /> Enabled</label>
           <div class="actions">
-            <button type="submit">Save</button>
-            <button type="button" id="test-ai">Test connection</button>
+            <button type="submit">Add model</button>
           </div>
         </form>
+        <div id="llm-models-list" class="table"></div>
         <pre id="settings-result"></pre>
       </section>
 
@@ -164,6 +175,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260825d"></script>
+  <script src="/static/app.js?v=20260825e"></script>
 </body>
 </html>

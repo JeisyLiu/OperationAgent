@@ -21,6 +21,25 @@ class AiSettings(Base):
     )
 
 
+class LlmModel(Base):
+    __tablename__ = "llm_models"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alias: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Integer, default=1)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=4)
+    timeout_sec: Mapped[int] = mapped_column(Integer, default=60)
+    extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class Account(Base):
     __tablename__ = "accounts"
 

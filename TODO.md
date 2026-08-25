@@ -1966,7 +1966,7 @@ UI
 
 仅作 backlog，不进入当前 Sprint：
 
-1. AI 根据 Asset 生成各平台 Variant — **部分落地**：Account Skill + `generate-variants` + bulk 入队；**Publish Task 三步向导**（母内容表单 / 多选账号 / 审阅分区入队）；平台 `publish_options.section`；可选媒体与纯文案 Asset（OpenClaw 仍 backlog）
+1. AI 根据 Asset 生成各平台 Variant — **部分落地**：LLM Gateway（多模型 SQLite、OpenAI+Qwen DashScope、failover、并发 batch）；Publish Task 三步向导；平台分区（OpenClaw 仍 backlog）
 2. AI 建议发布时间写入 Queue  
 3. `read_comments` / `reply_comment`  
 4. 人工确认后自动回复  

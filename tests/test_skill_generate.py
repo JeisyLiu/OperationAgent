@@ -15,6 +15,7 @@ from app.db.session import SessionLocal, engine
 from app.main import app
 from app.services.account_service import account_service
 from app.services.content_service import content_service
+from app.llm.types import BatchResult
 from app.schemas.accounts import AccountSkill
 
 
@@ -75,17 +76,16 @@ def test_generate_variants_requires_ai_settings(client: TestClient):
     assert resp.status_code == 400
 
 
-@patch("app.services.content_generate_service.llm_client.chat")
-def test_generate_variants_success(mock_chat, client: TestClient):
-    mock_chat.return_value = '{"title": "T", "caption": "Hello world", "hashtags": ["ai"]}'
+@patch("app.services.content_generate_service.llm.chat_batch")
+def test_generate_variants_success(mock_chat_batch, client: TestClient):
     db = SessionLocal()
     try:
-        from app.services.settings_service import settings_service
+        from app.services.llm_model_service import llm_model_service
 
-        settings_service.save(
+        llm_model_service.create(
             db,
+            alias="Test",
             provider="openai",
-            base_url=None,
             model="gpt-4o-mini",
             api_key="test-key",
         )
@@ -103,6 +103,14 @@ def test_generate_variants_success(mock_chat, client: TestClient):
     finally:
         db.close()
 
+    mock_chat_batch.return_value = [
+        BatchResult(
+            key=account_id,
+            ok=True,
+            text='{"title": "T", "caption": "Hello world", "hashtags": ["ai"]}',
+        )
+    ]
+
     resp = client.post(
         f"/api/content/assets/{asset_id}/generate-variants",
         json={"account_ids": [account_id]},
@@ -114,17 +122,16 @@ def test_generate_variants_success(mock_chat, client: TestClient):
     assert body["variants"][0]["account_id"] == account_id
 
 
-@patch("app.services.content_generate_service.llm_client.chat")
-def test_generate_variants_without_media(mock_chat, client: TestClient):
-    mock_chat.return_value = '{"title": "T", "caption": "Text only", "hashtags": [], "section": ""}'
+@patch("app.services.content_generate_service.llm.chat_batch")
+def test_generate_variants_without_media(mock_chat_batch, client: TestClient):
     db = SessionLocal()
     try:
-        from app.services.settings_service import settings_service
+        from app.services.llm_model_service import llm_model_service
 
-        settings_service.save(
+        llm_model_service.create(
             db,
+            alias="Test",
             provider="openai",
-            base_url=None,
             model="gpt-4o-mini",
             api_key="test-key",
         )
@@ -136,6 +143,14 @@ def test_generate_variants_without_media(mock_chat, client: TestClient):
     finally:
         db.close()
 
+    mock_chat_batch.return_value = [
+        BatchResult(
+            key=account_id,
+            ok=True,
+            text='{"title": "T", "caption": "Text only", "hashtags": [], "section": ""}',
+        )
+    ]
+
     resp = client.post(
         f"/api/content/assets/{asset_id}/generate-variants",
         json={"account_ids": [account_id]},
@@ -144,19 +159,16 @@ def test_generate_variants_without_media(mock_chat, client: TestClient):
     assert resp.json()["variants"][0]["caption"] == "Text only"
 
 
-@patch("app.services.content_generate_service.llm_client.chat")
-def test_generate_variants_section_for_bilibili(mock_chat, client: TestClient):
-    mock_chat.return_value = (
-        '{"title": "B", "caption": "Hello", "hashtags": ["test"], "section": "知识"}'
-    )
+@patch("app.services.content_generate_service.llm.chat_batch")
+def test_generate_variants_section_for_bilibili(mock_chat_batch, client: TestClient):
     db = SessionLocal()
     try:
-        from app.services.settings_service import settings_service
+        from app.services.llm_model_service import llm_model_service
 
-        settings_service.save(
+        llm_model_service.create(
             db,
+            alias="Test",
             provider="openai",
-            base_url=None,
             model="gpt-4o-mini",
             api_key="test-key",
         )
@@ -167,6 +179,14 @@ def test_generate_variants_section_for_bilibili(mock_chat, client: TestClient):
         account_id = account.id
     finally:
         db.close()
+
+    mock_chat_batch.return_value = [
+        BatchResult(
+            key=account_id,
+            ok=True,
+            text='{"title": "B", "caption": "Hello", "hashtags": ["test"], "section": "知识"}',
+        )
+    ]
 
     resp = client.post(
         f"/api/content/assets/{asset_id}/generate-variants",

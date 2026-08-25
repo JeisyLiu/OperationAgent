@@ -6,12 +6,13 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.constants import AccountStatus
-from app.llm import client as llm_client
+from app.llm import llm
+from app.llm.types import BatchItem
 from app.platforms import get_platform, require_platform
 from app.schemas.accounts import AccountSkill
 from app.services.account_service import account_service
 from app.services.content_service import content_service
-from app.services.settings_service import settings_service
+from app.services.llm_model_service import llm_model_service
 
 
 @dataclass
@@ -82,8 +83,7 @@ class ContentGenerateService:
         asset_id: int,
         account_ids: list[int],
     ) -> GenerateVariantsResult:
-        secrets = settings_service.get_secrets(db)
-        if secrets is None or not secrets.api_key:
+        if not llm_model_service.list_enabled_configs(db):
             raise ValueError("AI settings not configured")
 
         asset = content_service.get_asset(db, asset_id)
@@ -95,6 +95,8 @@ class ContentGenerateService:
         source_tags = ", ".join(attachments.get("tags") or [])
         variants: list = []
         errors: list[GenerateVariantError] = []
+        batch_items: list[BatchItem] = []
+        account_map: dict[int, object] = {}
 
         for account_id in account_ids:
             account = account_service.get(db, account_id)
@@ -127,35 +129,51 @@ class ContentGenerateService:
                 variant_schema=json.dumps(platform.variant_schema if platform else {}, ensure_ascii=False),
                 section_options=json.dumps(section_options, ensure_ascii=False),
             )
-            try:
-                reply = llm_client.chat(
-                    [
-                        {"role": "system", "content": "You output platform-tailored social post JSON only."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    secrets,
-                    max_tokens=800,
-                )
-                parsed = self._apply_schema_limits(account.platform, self._parse_llm_json(reply))
-                extra = {
-                    "account_id": account.id,
-                    "generated_by": "skill",
-                    "account_name": account.account_name,
-                }
-                if parsed.get("section"):
-                    extra["section"] = parsed["section"]
-                variant = content_service.create_variant(
-                    db,
-                    asset_id=asset_id,
-                    platform=account.platform,
-                    title=parsed.get("title"),
-                    caption=parsed.get("caption"),
-                    hashtags=parsed.get("hashtags"),
-                    extra=extra,
-                )
-                variants.append(variant)
-            except Exception as exc:
-                errors.append(GenerateVariantError(account_id=account_id, detail=str(exc)))
+            messages = [
+                {"role": "system", "content": "You output platform-tailored social post JSON only."},
+                {"role": "user", "content": prompt},
+            ]
+            batch_items.append(BatchItem(key=account_id, messages=messages))
+            account_map[account_id] = account
+
+        if batch_items:
+            batch_results = llm.chat_batch(
+                [(item.key, item.messages) for item in batch_items],
+                max_tokens=800,
+            )
+            for result in batch_results:
+                account_id = result.key
+                account = account_map.get(account_id)
+                if account is None:
+                    continue
+                if not result.ok:
+                    errors.append(
+                        GenerateVariantError(account_id=account_id, detail=result.error or "LLM failed")
+                    )
+                    continue
+                try:
+                    parsed = self._apply_schema_limits(
+                        account.platform, self._parse_llm_json(result.text or "")
+                    )
+                    extra = {
+                        "account_id": account.id,
+                        "generated_by": "skill",
+                        "account_name": account.account_name,
+                    }
+                    if parsed.get("section"):
+                        extra["section"] = parsed["section"]
+                    variant = content_service.create_variant(
+                        db,
+                        asset_id=asset_id,
+                        platform=account.platform,
+                        title=parsed.get("title"),
+                        caption=parsed.get("caption"),
+                        hashtags=parsed.get("hashtags"),
+                        extra=extra,
+                    )
+                    variants.append(variant)
+                except Exception as exc:
+                    errors.append(GenerateVariantError(account_id=account_id, detail=str(exc)))
 
         return GenerateVariantsResult(variants=variants, errors=errors)
 

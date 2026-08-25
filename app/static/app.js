@@ -547,17 +547,74 @@ async function loadHistory() {
 
 document.getElementById("load-history").onclick = loadHistory;
 
-document.getElementById("settings-form").onsubmit = async (e) => {
+async function refreshLlmModels() {
+  const models = await api("/api/llm/models");
+  const container = document.getElementById("llm-models-list");
+  if (!container) return;
+  container.innerHTML = models
+    .map(
+      (m) => `
+      <div class="row">
+        <div>#${m.id} ${m.alias}</div>
+        <div>${m.provider} · ${m.model || "-"}</div>
+        <div>${m.enabled ? "enabled" : "disabled"} · p${m.priority}</div>
+        <div class="actions">
+          <button type="button" data-llm-test="${m.id}">Test</button>
+          <button type="button" data-llm-toggle="${m.id}" data-enabled="${m.enabled}">${m.enabled ? "Disable" : "Enable"}</button>
+          <button type="button" class="danger" data-llm-delete="${m.id}">Delete</button>
+        </div>
+      </div>`
+    )
+    .join("") || `<div class="hint">No LLM models yet. Add one above.</div>`;
+
+  document.querySelectorAll("[data-llm-test]").forEach((btn) => {
+    btn.onclick = async () => {
+      const result = await api(`/api/llm/models/${btn.dataset.llmTest}/test`, { method: "POST" });
+      document.getElementById("settings-result").textContent = JSON.stringify(result, null, 2);
+    };
+  });
+  document.querySelectorAll("[data-llm-toggle]").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = Number(btn.dataset.llmToggle);
+      const enabled = btn.dataset.enabled !== "true";
+      await api(`/api/llm/models/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      });
+      refreshLlmModels();
+    };
+  });
+  document.querySelectorAll("[data-llm-delete]").forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm("Delete this LLM model?")) return;
+      await api(`/api/llm/models/${btn.dataset.llmDelete}`, { method: "DELETE" });
+      refreshLlmModels();
+    };
+  });
+}
+
+document.getElementById("llm-model-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const payload = Object.fromEntries(fd.entries());
-  const result = await api("/api/settings/ai", { method: "PUT", body: JSON.stringify(payload) });
-  document.getElementById("settings-result").textContent = JSON.stringify(result, null, 2);
-};
-
-document.getElementById("test-ai").onclick = async () => {
-  const result = await api("/api/settings/ai/test", { method: "POST" });
-  document.getElementById("settings-result").textContent = JSON.stringify(result, null, 2);
+  const payload = {
+    alias: fd.get("alias"),
+    provider: fd.get("provider"),
+    model: fd.get("model") || null,
+    base_url: fd.get("base_url") || null,
+    api_key: fd.get("api_key") || null,
+    priority: Number(fd.get("priority") || 0),
+    max_concurrency: Number(fd.get("max_concurrency") || 4),
+    timeout_sec: Number(fd.get("timeout_sec") || 60),
+    enabled: fd.get("enabled") === "on",
+  };
+  try {
+    await api("/api/llm/models", { method: "POST", body: JSON.stringify(payload) });
+    e.target.reset();
+    e.target.querySelector('input[name="enabled"]').checked = true;
+    await refreshLlmModels();
+  } catch (err) {
+    alert(err.message);
+  }
 };
 
 document.getElementById("account-form").onsubmit = async (e) => {
@@ -624,7 +681,14 @@ async function init() {
     const health = await api("/health");
     document.getElementById("app-version").textContent = `v${health.version}`;
     await loadPlatforms();
-    await Promise.all([refreshDashboard(), refreshAccounts(), refreshContent(), refreshQueue(), refreshWorkerBar()]);
+    await Promise.all([
+      refreshDashboard(),
+      refreshAccounts(),
+      refreshContent(),
+      refreshQueue(),
+      refreshWorkerBar(),
+      refreshLlmModels(),
+    ]);
     setInterval(() => {
       refreshDashboard();
       refreshQueue();

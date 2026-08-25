@@ -1,27 +1,7 @@
-from openai import OpenAI
+"""Backward-compatible shim; prefer `from app.llm import llm`."""
 
-from app.services.settings_service import AiSettingsSecrets
+from app.llm import llm as _llm
 
 
-def chat(
-    messages: list[dict[str, str]],
-    secrets: AiSettingsSecrets,
-    *,
-    max_tokens: int = 256,
-) -> str:
-    if not secrets.api_key:
-        raise ValueError("API key is not configured")
-
-    client_kwargs: dict = {"api_key": secrets.api_key}
-    if secrets.base_url:
-        client_kwargs["base_url"] = secrets.base_url
-
-    client = OpenAI(**client_kwargs)
-    model = secrets.model or "gpt-4o-mini"
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-    )
-    content = response.choices[0].message.content
-    return content or ""
+def chat(messages: list[dict[str, str]], secrets=None, *, max_tokens: int = 256) -> str:
+    return _llm.chat(messages, max_tokens=max_tokens)
