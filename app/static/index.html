@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260825e" />
+  <link rel="stylesheet" href="/static/style.css?v=20260826a" />
 </head>
 <body>
   <div class="layout">
@@ -31,29 +31,39 @@
       </section>
 
       <section id="view-settings" class="view">
-        <h2>LLM Models</h2>
-        <p class="hint">Configure multiple models with alias, priority, and enable/disable. Lower priority number is tried first; failover uses the next enabled model.</p>
-        <form id="llm-model-form" class="publish-form">
-          <label>Alias <input name="alias" required placeholder="e.g. Qwen main" /></label>
-          <label>Provider
-            <select name="provider" required>
-              <option value="openai">openai</option>
-              <option value="qwen">qwen (DashScope)</option>
-            </select>
-          </label>
-          <label>Model <input name="model" placeholder="gpt-4o-mini / qwen-plus" /></label>
-          <label>Base URL <input name="base_url" placeholder="OpenAI only; leave empty for Qwen" /></label>
-          <label>API Key <input name="api_key" type="password" autocomplete="off" /></label>
-          <label>Priority <input name="priority" type="number" value="0" /></label>
-          <label>Max concurrency <input name="max_concurrency" type="number" value="4" min="1" /></label>
-          <label>Timeout (sec) <input name="timeout_sec" type="number" value="60" min="5" /></label>
-          <label><input type="checkbox" name="enabled" checked /> Enabled</label>
-          <div class="actions">
-            <button type="submit">Add model</button>
-          </div>
-        </form>
-        <div id="llm-models-list" class="table"></div>
-        <pre id="settings-result"></pre>
+        <h2>LLM 连接池</h2>
+        <p class="hint">可添加多套模型配置。按 Priority 从小到大调用；失败自动切换下一套启用中的配置。Max concurrency 为该配置并发上限。</p>
+        <div class="pool-toolbar">
+          <button type="button" id="btn-llm-add">+ 添加配置</button>
+        </div>
+        <div id="llm-models-list" class="pool-list"></div>
+        <div id="llm-editor" class="pool-editor" hidden>
+          <h3 id="llm-editor-title">添加配置</h3>
+          <form id="llm-model-form" class="publish-form">
+            <input type="hidden" name="id" id="llm-edit-id" value="" />
+            <label>备注名 <input name="alias" id="llm-alias" required placeholder="例如：通义主力 / OpenAI 备用" /></label>
+            <label>Provider
+              <select name="provider" id="llm-provider" required>
+                <option value="openai">openai</option>
+                <option value="qwen">qwen (DashScope 原生)</option>
+              </select>
+            </label>
+            <label>Model <input name="model" id="llm-model" placeholder="gpt-4o-mini / qwen-plus" /></label>
+            <label>Base URL <input name="base_url" id="llm-base-url" placeholder="仅 OpenAI 需要；Qwen 可留空" /></label>
+            <label>API Key <input name="api_key" id="llm-api-key" type="password" autocomplete="off" placeholder="新建必填；编辑留空则不改" /></label>
+            <div class="pool-form-grid">
+              <label>Priority <input name="priority" id="llm-priority" type="number" value="0" /></label>
+              <label>Max concurrency <input name="max_concurrency" id="llm-concurrency" type="number" value="4" min="1" /></label>
+              <label>Timeout (sec) <input name="timeout_sec" id="llm-timeout" type="number" value="60" min="5" /></label>
+            </div>
+            <label class="inline-check"><input type="checkbox" name="enabled" id="llm-enabled" checked /> 启用</label>
+            <div class="actions">
+              <button type="submit" id="llm-save-btn">保存</button>
+              <button type="button" id="btn-llm-cancel">取消</button>
+            </div>
+          </form>
+        </div>
+        <pre id="settings-result" class="generate-result"></pre>
       </section>
 
       <section id="view-accounts" class="view">
@@ -116,7 +126,7 @@
           </form>
         </div>
 
-        <div id="wizard-step-2" class="wizard-panel" hidden>
+        <div id="wizard-step-2" class="wizard-panel">
           <div class="wizard-toolbar">
             <button type="button" id="btn-select-all-accounts">Select all</button>
             <button type="button" id="btn-select-none-accounts">Select none</button>
@@ -129,7 +139,7 @@
           <pre id="generate-result" class="generate-result"></pre>
         </div>
 
-        <div id="wizard-step-3" class="wizard-panel" hidden>
+        <div id="wizard-step-3" class="wizard-panel">
           <div class="wizard-toolbar">
             <button type="button" id="btn-select-all-enqueue">Select all publishable</button>
             <button type="button" id="btn-wizard-back-3">Back</button>
@@ -175,6 +185,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260825e"></script>
+  <script src="/static/app.js?v=20260826a"></script>
 </body>
 </html>

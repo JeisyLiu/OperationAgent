@@ -68,8 +68,14 @@ let platformCatalog = [];
 let cachedAccounts = [];
 let cachedVariants = [];
 let wizardStep = 1;
-let wizardAssetId = null;
+let wizardAssetId = Number(sessionStorage.getItem("wizardAssetId") || 0) || null;
 let reviewVariants = [];
+
+function setWizardAssetId(id) {
+  wizardAssetId = id;
+  if (id) sessionStorage.setItem("wizardAssetId", String(id));
+  else sessionStorage.removeItem("wizardAssetId");
+}
 
 function platformMeta(platformId) {
   return platformCatalog.find((p) => p.id === platformId) || { id: platformId, display_name: platformId };
@@ -124,8 +130,13 @@ function setWizardStep(step) {
   });
   for (let i = 1; i <= 3; i += 1) {
     const panel = document.getElementById(`wizard-step-${i}`);
-    if (panel) panel.hidden = i !== step;
+    if (panel) {
+      panel.classList.toggle("active", i === step);
+      panel.hidden = i !== step;
+    }
   }
+  if (step === 2) renderWizardAccountPicks();
+  if (step === 3) renderReviewPackages();
 }
 
 function showBootError(message) {
@@ -154,7 +165,9 @@ async function refreshAccounts() {
     )
     .join("") || `<div class="hint">No accounts yet.</div>`;
 
-  renderWizardAccountPicks();
+  if (wizardStep === 2) {
+    renderWizardAccountPicks();
+  }
 
   document.querySelectorAll("[data-skill]").forEach((btn) => {
     btn.onclick = () => openSkillEditor(Number(btn.dataset.skill));
@@ -186,6 +199,9 @@ async function refreshAccounts() {
 function renderWizardAccountPicks() {
   const container = document.getElementById("wizard-account-picks");
   if (!container) return;
+  const previouslyChecked = new Set(
+    Array.from(document.querySelectorAll('input[name="wizard_account"]:checked')).map((el) => el.value)
+  );
   const active = cachedAccounts.filter((a) => a.status === "ACTIVE");
   if (active.length === 0) {
     container.innerHTML = `<div class="hint">No ACTIVE accounts. Mark accounts active first.</div>`;
@@ -196,21 +212,23 @@ function renderWizardAccountPicks() {
     acc[account.platform].push(account);
     return acc;
   }, {});
+  const hasPrev = previouslyChecked.size > 0;
   container.innerHTML = Object.entries(grouped)
     .map(([platformId, accounts]) => {
       const meta = platformMeta(platformId);
       const rows = accounts
-        .map(
-          (a) => `
-          <label>
-            <input type="checkbox" name="wizard_account" value="${a.id}" checked />
-            #${a.id} ${a.account_name}
-          </label>`
-        )
+        .map((a) => {
+          const checked = hasPrev ? previouslyChecked.has(String(a.id)) : true;
+          return `
+          <label class="check-row">
+            <input type="checkbox" name="wizard_account" value="${a.id}" ${checked ? "checked" : ""} />
+            <span>#${a.id} ${escapeHtml(a.account_name)}</span>
+          </label>`;
+        })
         .join("");
       return `
         <div class="account-group">
-          <h4>${meta.display_name}${meta.publishable ? "" : " (login only)"}</h4>
+          <h4>${escapeHtml(meta.display_name)}${meta.publishable ? "" : " (login only)"}</h4>
           <div class="account-picks">${rows}</div>
         </div>`;
     })
@@ -232,19 +250,24 @@ function renderReviewPackages() {
         ? `<label>${sectionLabel(v.platform)}
             <select data-field="section" data-variant-id="${v.id}">
               <option value="">—</option>
-              ${choices.map((c) => `<option value="${c}" ${v.section === c ? "selected" : ""}>${c}</option>`).join("")}
+              ${choices
+                .map(
+                  (c) =>
+                    `<option value="${escapeHtml(c)}" ${v.section === c ? "selected" : ""}>${escapeHtml(c)}</option>`
+                )
+                .join("")}
             </select>
           </label>`
         : "";
       return `
         <article class="package-card" data-variant-id="${v.id}">
           <div class="package-card-header">
-            <label>
-              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "checked" : "disabled"} />
-              <strong>${v.account_name || `Account #${v.account_id}`}</strong>
-              <span>· ${platformLabel(v.platform)}</span>
+            <label class="check-row">
+              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "checked" : ""} />
+              <strong>${escapeHtml(v.account_name || `Account #${v.account_id}`)}</strong>
+              <span>· ${escapeHtml(platformLabel(v.platform))}</span>
             </label>
-            <span class="package-badge ${publishable ? "publishable" : "login-only"}">${publishable ? "publishable" : "login only"}</span>
+            <span class="package-badge ${publishable ? "publishable" : "login-only"}">${publishable ? "publishable" : "login only（可勾选审阅，入队会被拒绝）"}</span>
           </div>
           <label>Title
             <input data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
@@ -259,6 +282,25 @@ function renderReviewPackages() {
         </article>`;
     })
     .join("");
+
+  // Persist field edits into reviewVariants as user types/selects
+  container.querySelectorAll("[data-field]").forEach((el) => {
+    const sync = () => {
+      const variantId = Number(el.dataset.variantId);
+      const field = el.dataset.field;
+      const target = reviewVariants.find((v) => v.id === variantId);
+      if (!target) return;
+      if (field === "hashtags") {
+        target.hashtags = el.value
+          ? el.value.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+      } else {
+        target[field] = el.value;
+      }
+    };
+    el.addEventListener("change", sync);
+    el.addEventListener("input", sync);
+  });
 }
 
 function escapeHtml(value) {
@@ -357,7 +399,7 @@ document.getElementById("publish-mother-form").onsubmit = async (e) => {
         tags,
       }),
     });
-    wizardAssetId = asset.id;
+    setWizardAssetId(asset.id);
     const video = fd.get("video");
     if (video && video.size > 0) {
       const upload = new FormData();
@@ -424,8 +466,9 @@ document.getElementById("btn-generate-packages").onclick = async () => {
 };
 
 document.getElementById("btn-select-all-enqueue").onclick = () => {
-  document.querySelectorAll('input[name="enqueue_variant"]:not(:disabled)').forEach((el) => {
-    el.checked = true;
+  document.querySelectorAll('input[name="enqueue_variant"]').forEach((el) => {
+    const variant = reviewVariants.find((v) => v.id === Number(el.value));
+    if (variant && isPublishable(variant.platform)) el.checked = true;
   });
 };
 
@@ -547,30 +590,99 @@ async function loadHistory() {
 
 document.getElementById("load-history").onclick = loadHistory;
 
+let cachedLlmModels = [];
+
+function resetLlmEditor() {
+  const form = document.getElementById("llm-model-form");
+  form.reset();
+  document.getElementById("llm-edit-id").value = "";
+  document.getElementById("llm-enabled").checked = true;
+  document.getElementById("llm-priority").value = "0";
+  document.getElementById("llm-concurrency").value = "4";
+  document.getElementById("llm-timeout").value = "60";
+  document.getElementById("llm-editor-title").textContent = "添加配置";
+  document.getElementById("llm-save-btn").textContent = "保存";
+  document.getElementById("llm-api-key").placeholder = "新建必填；编辑留空则不改";
+}
+
+function openLlmEditor(model = null) {
+  const editor = document.getElementById("llm-editor");
+  resetLlmEditor();
+  if (model) {
+    document.getElementById("llm-editor-title").textContent = `编辑配置 #${model.id}`;
+    document.getElementById("llm-edit-id").value = String(model.id);
+    document.getElementById("llm-alias").value = model.alias || "";
+    document.getElementById("llm-provider").value = model.provider || "openai";
+    document.getElementById("llm-model").value = model.model || "";
+    document.getElementById("llm-base-url").value = model.base_url || "";
+    document.getElementById("llm-priority").value = String(model.priority ?? 0);
+    document.getElementById("llm-concurrency").value = String(model.max_concurrency ?? 4);
+    document.getElementById("llm-timeout").value = String(model.timeout_sec ?? 60);
+    document.getElementById("llm-enabled").checked = Boolean(model.enabled);
+    document.getElementById("llm-api-key").value = "";
+    document.getElementById("llm-save-btn").textContent = "更新";
+  }
+  editor.hidden = false;
+  editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeLlmEditor() {
+  document.getElementById("llm-editor").hidden = true;
+  resetLlmEditor();
+}
+
 async function refreshLlmModels() {
-  const models = await api("/api/llm/models");
+  cachedLlmModels = await api("/api/llm/models");
   const container = document.getElementById("llm-models-list");
   if (!container) return;
-  container.innerHTML = models
+  if (!cachedLlmModels.length) {
+    container.innerHTML = `<div class="hint">连接池为空。点击「+ 添加配置」创建第一套模型。</div>`;
+    return;
+  }
+  container.innerHTML = cachedLlmModels
     .map(
       (m) => `
-      <div class="row">
-        <div>#${m.id} ${m.alias}</div>
-        <div>${m.provider} · ${m.model || "-"}</div>
-        <div>${m.enabled ? "enabled" : "disabled"} · p${m.priority}</div>
-        <div class="actions">
-          <button type="button" data-llm-test="${m.id}">Test</button>
-          <button type="button" data-llm-toggle="${m.id}" data-enabled="${m.enabled}">${m.enabled ? "Disable" : "Enable"}</button>
-          <button type="button" class="danger" data-llm-delete="${m.id}">Delete</button>
+      <article class="pool-card ${m.enabled ? "" : "disabled"}">
+        <div>
+          <div class="title">${escapeHtml(m.alias)}
+            <span class="pool-badge ${m.enabled ? "on" : "off"}">${m.enabled ? "启用" : "停用"}</span>
+          </div>
+          <div class="meta">#${m.id} · key ${escapeHtml(m.api_key || "未配置")}</div>
         </div>
-      </div>`
+        <div>
+          <div>${escapeHtml(m.provider)} · ${escapeHtml(m.model || "-")}</div>
+          <div class="meta">${escapeHtml(m.base_url || "默认 endpoint")}</div>
+        </div>
+        <div>
+          <div>Priority ${m.priority}</div>
+          <div class="meta">并发 ${m.max_concurrency} · 超时 ${m.timeout_sec}s</div>
+        </div>
+        <div class="actions">
+          <button type="button" data-llm-edit="${m.id}">编辑</button>
+          <button type="button" data-llm-test="${m.id}">测试</button>
+          <button type="button" data-llm-toggle="${m.id}" data-enabled="${m.enabled}">${m.enabled ? "停用" : "启用"}</button>
+          <button type="button" class="danger" data-llm-delete="${m.id}">删除</button>
+        </div>
+      </article>`
     )
-    .join("") || `<div class="hint">No LLM models yet. Add one above.</div>`;
+    .join("");
 
+  document.querySelectorAll("[data-llm-edit]").forEach((btn) => {
+    btn.onclick = () => {
+      const model = cachedLlmModels.find((m) => m.id === Number(btn.dataset.llmEdit));
+      if (model) openLlmEditor(model);
+    };
+  });
   document.querySelectorAll("[data-llm-test]").forEach((btn) => {
     btn.onclick = async () => {
-      const result = await api(`/api/llm/models/${btn.dataset.llmTest}/test`, { method: "POST" });
-      document.getElementById("settings-result").textContent = JSON.stringify(result, null, 2);
+      const resultEl = document.getElementById("settings-result");
+      resultEl.textContent = "Testing…";
+      try {
+        const result = await api(`/api/llm/models/${btn.dataset.llmTest}/test`, { method: "POST" });
+        resultEl.textContent = JSON.stringify(result, null, 2);
+      } catch (err) {
+        resultEl.textContent = err.message;
+      }
     };
   });
   document.querySelectorAll("[data-llm-toggle]").forEach((btn) => {
@@ -586,31 +698,44 @@ async function refreshLlmModels() {
   });
   document.querySelectorAll("[data-llm-delete]").forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm("Delete this LLM model?")) return;
+      if (!confirm("删除该连接池配置？")) return;
       await api(`/api/llm/models/${btn.dataset.llmDelete}`, { method: "DELETE" });
+      closeLlmEditor();
       refreshLlmModels();
     };
   });
 }
 
+document.getElementById("btn-llm-add").onclick = () => openLlmEditor();
+document.getElementById("btn-llm-cancel").onclick = () => closeLlmEditor();
+
 document.getElementById("llm-model-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
+  const editId = String(fd.get("id") || "").trim();
   const payload = {
     alias: fd.get("alias"),
     provider: fd.get("provider"),
     model: fd.get("model") || null,
     base_url: fd.get("base_url") || null,
-    api_key: fd.get("api_key") || null,
     priority: Number(fd.get("priority") || 0),
     max_concurrency: Number(fd.get("max_concurrency") || 4),
     timeout_sec: Number(fd.get("timeout_sec") || 60),
     enabled: fd.get("enabled") === "on",
   };
+  const apiKey = String(fd.get("api_key") || "").trim();
+  if (apiKey) payload.api_key = apiKey;
+  if (!editId && !apiKey) {
+    alert("新建配置需要填写 API Key");
+    return;
+  }
   try {
-    await api("/api/llm/models", { method: "POST", body: JSON.stringify(payload) });
-    e.target.reset();
-    e.target.querySelector('input[name="enabled"]').checked = true;
+    if (editId) {
+      await api(`/api/llm/models/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/llm/models", { method: "POST", body: JSON.stringify(payload) });
+    }
+    closeLlmEditor();
     await refreshLlmModels();
   } catch (err) {
     alert(err.message);
@@ -663,16 +788,14 @@ document.querySelectorAll(".wizard-step").forEach((btn) => {
   btn.addEventListener("click", () => {
     const step = Number(btn.dataset.wizardStep);
     if (step === 2 && !wizardAssetId) {
-      alert("Complete step 1 first.");
+      alert("请先完成第 1 步：填写标题和描述并点 Next。");
       return;
     }
     if (step === 3 && !reviewVariants.length) {
-      alert("Generate content packages in step 2 first.");
+      alert("请先在第 2 步勾选账号并生成内容包。");
       return;
     }
     setWizardStep(step);
-    if (step === 2) renderWizardAccountPicks();
-    if (step === 3) renderReviewPackages();
   });
 });
 

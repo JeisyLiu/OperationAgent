@@ -63,6 +63,28 @@ input, button, select {
   border-radius: 6px;
   padding: .5rem .65rem;
 }
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  min-width: 1rem;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+label.check-row {
+  display: flex !important;
+  align-items: center;
+  gap: .5rem;
+  min-width: auto !important;
+  cursor: pointer;
+  user-select: none;
+}
 select {
   min-width: 240px;
   max-width: 100%;
@@ -186,7 +208,11 @@ pre {
   border-color: var(--accent);
 }
 .wizard-panel {
+  display: none;
   margin-bottom: 1.5rem;
+}
+.wizard-panel.active {
+  display: block;
 }
 .publish-form {
   display: grid;
@@ -250,7 +276,14 @@ pre {
   gap: .5rem;
   flex-wrap: wrap;
 }
-.package-card label { min-width: 100%; }
+.package-card-header label {
+  display: flex !important;
+  align-items: center;
+  gap: .5rem;
+  min-width: auto !important;
+  flex: 1;
+}
+.package-card > label { min-width: 100%; }
 .package-card input,
 .package-card textarea,
 .package-card select {
@@ -275,6 +308,77 @@ pre {
   color: var(--muted);
 }
 .content-history summary { cursor: pointer; margin-bottom: .75rem; }
+
+.pool-toolbar {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: .75rem;
+}
+.pool-list {
+  display: grid;
+  gap: .65rem;
+  margin-bottom: 1rem;
+}
+.pool-card {
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 1fr auto;
+  gap: .75rem;
+  align-items: center;
+  padding: .85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pool-card.disabled {
+  opacity: .55;
+}
+.pool-card .meta {
+  color: var(--muted);
+  font-size: .85rem;
+}
+.pool-card .title {
+  font-weight: 600;
+}
+.pool-badge {
+  display: inline-block;
+  padding: .15rem .45rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: .75rem;
+  margin-left: .35rem;
+}
+.pool-badge.on {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.pool-badge.off {
+  color: var(--muted);
+}
+.pool-editor {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.15);
+  max-width: 720px;
+}
+.pool-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .75rem;
+}
+.pool-form-grid label { min-width: 0; }
+.inline-check {
+  display: flex !important;
+  align-items: center;
+  gap: .5rem;
+  min-width: auto !important;
+}
+
+@media (max-width: 900px) {
+  .pool-card { grid-template-columns: 1fr; }
+  .pool-form-grid { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }
