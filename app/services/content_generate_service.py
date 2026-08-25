@@ -137,6 +137,11 @@ class ContentGenerateService:
             account_map[account_id] = account
 
         if batch_items:
+            content_service.delete_skill_drafts_for_accounts(
+                db,
+                asset_id=asset_id,
+                account_ids=[item.key for item in batch_items],
+            )
             batch_results = llm.chat_batch(
                 [(item.key, item.messages) for item in batch_items],
                 max_tokens=800,
@@ -170,6 +175,7 @@ class ContentGenerateService:
                         caption=parsed.get("caption"),
                         hashtags=parsed.get("hashtags"),
                         extra=extra,
+                        status="DRAFT",
                     )
                     variants.append(variant)
                 except Exception as exc:

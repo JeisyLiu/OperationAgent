@@ -49,6 +49,14 @@ def list_assets(db: Session = Depends(get_db)) -> list[AssetResponse]:
     return [_asset_response(a) for a in content_service.list_assets(db)]
 
 
+@router.get("/assets/{asset_id}", response_model=AssetResponse)
+def get_asset(asset_id: int, db: Session = Depends(get_db)) -> AssetResponse:
+    asset = content_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return _asset_response(asset)
+
+
 @router.post("/assets", response_model=AssetResponse)
 def create_asset(payload: AssetCreate, db: Session = Depends(get_db)) -> AssetResponse:
     asset = content_service.create_asset(

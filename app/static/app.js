@@ -77,6 +77,92 @@ function setWizardAssetId(id) {
   else sessionStorage.removeItem("wizardAssetId");
 }
 
+function isSkillDraft(variant) {
+  return Boolean(variant && variant.generated_by === "skill" && variant.account_id);
+}
+
+async function loadDraftPackages(assetId) {
+  if (!assetId) {
+    reviewVariants = [];
+    return [];
+  }
+  const variants = await api(`/api/content/variants?asset_id=${assetId}`);
+  // Keep latest draft per account_id
+  const byAccount = new Map();
+  for (const variant of variants) {
+    if (!isSkillDraft(variant)) continue;
+    const prev = byAccount.get(variant.account_id);
+    if (!prev || variant.id > prev.id) {
+      byAccount.set(variant.account_id, variant);
+    }
+  }
+  reviewVariants = Array.from(byAccount.values()).sort((a, b) => b.id - a.id);
+  return reviewVariants;
+}
+
+async function fillMotherFormFromAsset(assetId) {
+  if (!assetId) return null;
+  try {
+    const asset = await api(`/api/content/assets/${assetId}`);
+    const form = document.getElementById("publish-mother-form");
+    if (!form) return asset;
+    form.title.value = asset.title || "";
+    form.base_caption.value = asset.base_caption || "";
+    form.tags.value = (asset.tags || []).join(", ");
+    return asset;
+  } catch {
+    setWizardAssetId(null);
+    return null;
+  }
+}
+
+function setWizardStep(step) {
+  wizardStep = step;
+  document.querySelectorAll(".wizard-step").forEach((el) => {
+    el.classList.toggle("active", Number(el.dataset.wizardStep) === step);
+  });
+  for (let i = 1; i <= 3; i += 1) {
+    const panel = document.getElementById(`wizard-step-${i}`);
+    if (panel) {
+      panel.classList.toggle("active", i === step);
+      panel.hidden = i !== step;
+    }
+  }
+  if (step === 2) renderWizardAccountPicks();
+  if (step === 3) renderReviewPackages();
+}
+
+async function goWizardStep(step) {
+  if (step === 2 && !wizardAssetId) {
+    alert("请先完成第 1 步：填写标题和描述并点 Next。");
+    return false;
+  }
+  if (step === 3) {
+    if (wizardAssetId) {
+      await loadDraftPackages(wizardAssetId);
+    }
+    if (!reviewVariants.length) {
+      alert("请先在第 2 步勾选账号并生成内容包。");
+      return false;
+    }
+  }
+  setWizardStep(step);
+  return true;
+}
+
+async function resumeWizardAsset(assetId) {
+  setWizardAssetId(assetId);
+  await fillMotherFormFromAsset(assetId);
+  const drafts = await loadDraftPackages(assetId);
+  renderWizardAccountPicks();
+  if (drafts.length) {
+    setWizardStep(3);
+  } else {
+    setWizardStep(2);
+  }
+  showView("content");
+}
+
 function platformMeta(platformId) {
   return platformCatalog.find((p) => p.id === platformId) || { id: platformId, display_name: platformId };
 }
@@ -121,22 +207,6 @@ async function loadPlatforms() {
     throw new Error("Platform catalog is empty");
   }
   renderPlatformOptions("account-platform");
-}
-
-function setWizardStep(step) {
-  wizardStep = step;
-  document.querySelectorAll(".wizard-step").forEach((el) => {
-    el.classList.toggle("active", Number(el.dataset.wizardStep) === step);
-  });
-  for (let i = 1; i <= 3; i += 1) {
-    const panel = document.getElementById(`wizard-step-${i}`);
-    if (panel) {
-      panel.classList.toggle("active", i === step);
-      panel.hidden = i !== step;
-    }
-  }
-  if (step === 2) renderWizardAccountPicks();
-  if (step === 3) renderReviewPackages();
 }
 
 function showBootError(message) {
@@ -378,10 +448,38 @@ function renderEnqueueList() {
 async function refreshContent() {
   const assets = await api("/api/content/assets");
   cachedVariants = await api("/api/content/variants");
+  const draftCountByAsset = cachedVariants.reduce((acc, v) => {
+    if (!isSkillDraft(v)) return acc;
+    acc[v.asset_id] = (acc[v.asset_id] || 0) + 1;
+    return acc;
+  }, {});
   document.getElementById("content-list").innerHTML = [
-    ...assets.map((a) => `<div class="row"><div>Asset #${a.id}</div><div>${a.title}</div><div>${a.status}</div><div>${a.media_type}</div></div>`),
-    ...cachedVariants.map((v) => `<div class="row"><div>Variant #${v.id}</div><div>${platformLabel(v.platform)}</div><div>${v.title || ""}</div><div>acct #${v.account_id || "-"}</div></div>`),
-  ].join("");
+    ...assets.map((a) => {
+      const drafts = draftCountByAsset[a.id] || 0;
+      const current = wizardAssetId === a.id ? " · current" : "";
+      return `<div class="row">
+        <div>Asset #${a.id}${current}</div>
+        <div>${escapeHtml(a.title)}</div>
+        <div>${a.status} · ${drafts} draft(s)</div>
+        <div class="actions">
+          <button type="button" data-resume-asset="${a.id}">Resume</button>
+        </div>
+      </div>`;
+    }),
+    ...cachedVariants
+      .filter((v) => isSkillDraft(v))
+      .slice(0, 20)
+      .map(
+        (v) =>
+          `<div class="row"><div>Draft #${v.id}</div><div>${platformLabel(v.platform)}</div><div>${escapeHtml(
+            (v.title || v.caption || "").slice(0, 60)
+          )}</div><div>acct #${v.account_id || "-"} · asset #${v.asset_id}</div></div>`
+      ),
+  ].join("") || `<div class="hint">No assets yet.</div>`;
+
+  document.querySelectorAll("[data-resume-asset]").forEach((btn) => {
+    btn.onclick = () => resumeWizardAsset(Number(btn.dataset.resumeAsset)).catch((e) => alert(e.message));
+  });
 }
 
 document.getElementById("publish-mother-form").onsubmit = async (e) => {
@@ -456,7 +554,7 @@ document.getElementById("btn-generate-packages").onclick = async () => {
       body: JSON.stringify({ account_ids: accountIds }),
     });
     document.getElementById("generate-result").textContent = JSON.stringify(result, null, 2);
-    reviewVariants = result.variants || [];
+    await loadDraftPackages(wizardAssetId);
     renderReviewPackages();
     setWizardStep(3);
     await refreshContent();
@@ -486,7 +584,7 @@ document.getElementById("btn-save-packages").onclick = async () => {
         }),
       });
     }
-    reviewVariants = await api(`/api/content/variants?asset_id=${wizardAssetId}`);
+    reviewVariants = await loadDraftPackages(wizardAssetId);
     renderReviewPackages();
     alert("Saved.");
   } catch (err) {
@@ -786,18 +884,21 @@ document.getElementById("btn-stop").onclick = () => api("/api/worker/stop", { me
 
 document.querySelectorAll(".wizard-step").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const step = Number(btn.dataset.wizardStep);
-    if (step === 2 && !wizardAssetId) {
-      alert("请先完成第 1 步：填写标题和描述并点 Next。");
-      return;
-    }
-    if (step === 3 && !reviewVariants.length) {
-      alert("请先在第 2 步勾选账号并生成内容包。");
-      return;
-    }
-    setWizardStep(step);
+    goWizardStep(Number(btn.dataset.wizardStep)).catch((e) => alert(e.message));
   });
 });
+
+async function restoreWizardSession() {
+  if (!wizardAssetId) return;
+  const asset = await fillMotherFormFromAsset(wizardAssetId);
+  if (!asset) return;
+  const drafts = await loadDraftPackages(wizardAssetId);
+  if (drafts.length) {
+    setWizardStep(3);
+  } else {
+    setWizardStep(2);
+  }
+}
 
 async function init() {
   try {
@@ -812,6 +913,7 @@ async function init() {
       refreshWorkerBar(),
       refreshLlmModels(),
     ]);
+    await restoreWizardSession();
     setInterval(() => {
       refreshDashboard();
       refreshQueue();

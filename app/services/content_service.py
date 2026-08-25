@@ -161,6 +161,7 @@ class ContentService:
         hashtags: list[str] | None = None,
         media_path: str | None = None,
         extra: dict | None = None,
+        status: str = "READY",
     ) -> ContentVariant:
         asset = self.get_asset(db, asset_id)
         if asset is None:
@@ -179,12 +180,44 @@ class ContentService:
             hashtags_json=json.dumps(hashtags or []),
             media_path=media_path or asset.file_path,
             extra_json=json.dumps(extra or {}),
-            status="READY",
+            status=status,
         )
         db.add(variant)
         db.commit()
         db.refresh(variant)
         return variant
+
+    def delete_skill_drafts_for_accounts(
+        self,
+        db: Session,
+        *,
+        asset_id: int,
+        account_ids: list[int],
+    ) -> int:
+        """Remove previous skill-generated drafts for the same asset+accounts."""
+        if not account_ids:
+            return 0
+        account_set = set(account_ids)
+        rows = (
+            db.query(ContentVariant)
+            .filter(ContentVariant.asset_id == asset_id)
+            .all()
+        )
+        deleted = 0
+        for row in rows:
+            try:
+                extra = json.loads(row.extra_json or "{}")
+            except json.JSONDecodeError:
+                continue
+            if extra.get("generated_by") != "skill":
+                continue
+            if extra.get("account_id") not in account_set:
+                continue
+            db.delete(row)
+            deleted += 1
+        if deleted:
+            db.commit()
+        return deleted
 
     def update_variant(
         self,
