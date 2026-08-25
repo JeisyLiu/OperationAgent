@@ -5,10 +5,11 @@ from pydantic import BaseModel, Field
 
 class AssetCreate(BaseModel):
     title: str
-    media_type: str = "video"
-    base_caption: str | None = None
+    base_caption: str
+    media_type: str = "text"
     language: str | None = None
     category: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class AssetResponse(BaseModel):
@@ -19,6 +20,8 @@ class AssetResponse(BaseModel):
     base_caption: str | None = None
     language: str | None = None
     category: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list)
     status: str
     created_at: datetime
 
@@ -32,12 +35,14 @@ class VariantCreate(BaseModel):
     caption: str | None = None
     hashtags: list[str] = Field(default_factory=list)
     media_path: str | None = None
+    section: str | None = None
 
 
 class VariantUpdate(BaseModel):
     title: str | None = None
     caption: str | None = None
     hashtags: list[str] | None = None
+    section: str | None = None
     status: str | None = None
 
 
@@ -49,8 +54,10 @@ class VariantResponse(BaseModel):
     caption: str | None = None
     hashtags: list[str] = Field(default_factory=list)
     media_path: str | None = None
+    section: str | None = None
     status: str
     account_id: int | None = None
+    account_name: str | None = None
     generated_by: str | None = None
 
     model_config = {"from_attributes": True}

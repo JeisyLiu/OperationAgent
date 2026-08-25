@@ -26,5 +26,6 @@
     "topics": ["updates", "how-to", "events", "stories"],
     "hashtag_style": "1-3 relevant hashtags when useful; not required for every post",
     "extra_prompt": "Write for a mixed audience including non-experts. Lead with the human angle or clear benefit."
-  }
+  },
+  "publish_options": {}
 }

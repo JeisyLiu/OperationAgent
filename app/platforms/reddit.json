@@ -26,5 +26,11 @@
     "topics": ["discussion", "tips", "behind-the-scenes", "AMA-style context"],
     "hashtag_style": "Avoid hashtag spam; use subreddit-appropriate framing instead",
     "extra_prompt": "Write like a fellow community member, not an ad. Title should invite discussion; body adds context without sounding salesy."
+  },
+  "publish_options": {
+    "section": {
+      "label": "Subreddit",
+      "choices": ["r/videos", "r/technology", "r/LifeProTips", "r/AskReddit", "r/entrepreneur"]
+    }
   }
 }

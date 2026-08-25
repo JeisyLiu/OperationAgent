@@ -53,6 +53,7 @@ def test_platforms_api(client: TestClient):
     assert tiktok["publishable"] is True
     assert tiktok["default_skill"]["tone"]
     assert tiktok["default_persona"]
+    assert "publish_options" in tiktok
 
 
 def test_account_create_applies_platform_default_skill(client: TestClient):

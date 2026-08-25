@@ -241,8 +241,15 @@ class JobService:
         template_path = Path(__file__).resolve().parents[1] / "prompts" / "publish_task.md"
         template = template_path.read_text(encoding="utf-8")
         hashtags = []
+        section = ""
         if variant and variant.hashtags_json:
             hashtags = json.loads(variant.hashtags_json)
+        if variant and variant.extra_json:
+            try:
+                extra = json.loads(variant.extra_json)
+                section = extra.get("section") or ""
+            except json.JSONDecodeError:
+                section = ""
         media_path = variant.media_path if variant else ""
         return template.format(
             platform=job.platform,
@@ -250,6 +257,7 @@ class JobService:
             title=variant.title if variant else "",
             caption=variant.caption if variant else "",
             hashtags=", ".join(hashtags),
+            section=section,
         )
 
 

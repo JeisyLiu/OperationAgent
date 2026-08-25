@@ -26,5 +26,6 @@
     "topics": ["lifestyle", "behind the scenes", "tips", "reels"],
     "hashtag_style": "5-15 mix of niche and mid-volume tags; place at end or in first comment style",
     "extra_prompt": "Caption complements the visual mood. First line should work as preview text in the feed."
-  }
+  },
+  "publish_options": {}
 }

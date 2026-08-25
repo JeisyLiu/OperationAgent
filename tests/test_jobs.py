@@ -34,7 +34,7 @@ def test_job_create_requires_active_account(client: TestClient):
     db = SessionLocal()
     try:
         account = account_service.create(db, platform="tiktok", account_name="a1")
-        asset = content_service.create_asset(db, title="v", media_type="video")
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="video")
         content_service.save_upload(db, asset, "demo.mp4", b"data")
         variant = content_service.create_variant(
             db,
@@ -73,7 +73,7 @@ def test_job_create_rejects_non_publishable_platform(client: TestClient):
     try:
         account = account_service.create(db, platform="bilibili", account_name="b1")
         account_service.mark_active(db, account)
-        asset = content_service.create_asset(db, title="v", media_type="video")
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="video")
         content_service.save_upload(db, asset, "demo.mp4", b"data")
         variant = content_service.create_variant(
             db,

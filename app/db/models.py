@@ -46,6 +46,7 @@ class ContentAsset(Base):
     base_caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str | None] = mapped_column(String(16), nullable=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attachments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="DRAFT")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

@@ -26,5 +26,6 @@
     "topics": ["trends", "life hacks", "entertainment", "how-to"],
     "hashtag_style": "3-5 tags mixing broad reach (#fyp) with niche relevance",
     "extra_prompt": "Lead with a strong hook in the first line. Keep captions scannable for mobile; match spoken pacing in the video."
-  }
+  },
+  "publish_options": {}
 }

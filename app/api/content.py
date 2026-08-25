@@ -32,27 +32,35 @@ def _variant_response(variant: ContentVariant) -> VariantResponse:
         caption=variant.caption,
         hashtags=hashtags,
         media_path=variant.media_path,
+        section=extra.get("section"),
         status=variant.status,
         account_id=extra.get("account_id"),
+        account_name=extra.get("account_name"),
         generated_by=extra.get("generated_by"),
     )
 
 
+def _asset_response(asset) -> AssetResponse:
+    return AssetResponse(**content_service.asset_to_dict(asset))
+
+
 @router.get("/assets", response_model=list[AssetResponse])
 def list_assets(db: Session = Depends(get_db)) -> list[AssetResponse]:
-    return content_service.list_assets(db)
+    return [_asset_response(a) for a in content_service.list_assets(db)]
 
 
 @router.post("/assets", response_model=AssetResponse)
 def create_asset(payload: AssetCreate, db: Session = Depends(get_db)) -> AssetResponse:
-    return content_service.create_asset(
+    asset = content_service.create_asset(
         db,
         title=payload.title,
-        media_type=payload.media_type,
         base_caption=payload.base_caption,
+        media_type=payload.media_type,
         language=payload.language,
         category=payload.category,
+        tags=payload.tags,
     )
+    return _asset_response(asset)
 
 
 @router.post("/assets/{asset_id}/upload", response_model=AssetResponse)
@@ -65,7 +73,27 @@ async def upload_asset(
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
     data = await file.read()
-    return content_service.save_upload(db, asset, file.filename or "upload.bin", data)
+    asset = content_service.save_upload(db, asset, file.filename or "upload.bin", data)
+    return _asset_response(asset)
+
+
+@router.post("/assets/{asset_id}/upload-images", response_model=AssetResponse)
+async def upload_images(
+    asset_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+) -> AssetResponse:
+    asset = content_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if not files:
+        raise HTTPException(status_code=400, detail="No images provided")
+    payloads = []
+    for upload in files:
+        data = await upload.read()
+        payloads.append((upload.filename or "image.jpg", data))
+    asset = content_service.save_images(db, asset, payloads)
+    return _asset_response(asset)
 
 
 @router.post("/assets/{asset_id}/generate-variants", response_model=GenerateVariantsResponse)
@@ -98,6 +126,9 @@ def list_variants(asset_id: int | None = None, db: Session = Depends(get_db)) ->
 
 @router.post("/variants", response_model=VariantResponse)
 def create_variant(payload: VariantCreate, db: Session = Depends(get_db)) -> VariantResponse:
+    extra = {}
+    if payload.section:
+        extra["section"] = payload.section
     try:
         variant = content_service.create_variant(
             db,
@@ -107,6 +138,7 @@ def create_variant(payload: VariantCreate, db: Session = Depends(get_db)) -> Var
             caption=payload.caption,
             hashtags=payload.hashtags,
             media_path=payload.media_path,
+            extra=extra or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -136,6 +168,7 @@ def patch_variant(
         title=payload.title,
         caption=payload.caption,
         hashtags=payload.hashtags,
+        section=payload.section,
         status=payload.status,
     )
     return _variant_response(updated)

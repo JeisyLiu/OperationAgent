@@ -33,6 +33,20 @@ def test_all_platforms_have_default_skill():
         assert platform.default_skill.get("language"), f"{platform.id} missing default_skill.language"
 
 
+def test_bilibili_has_section_choices():
+    platform = get_platform("bilibili")
+    assert platform is not None
+    choices = platform.publish_options.get("section", {}).get("choices", [])
+    assert len(choices) >= 3
+
+
+def test_tiktok_has_no_section_choices():
+    platform = get_platform("tiktok")
+    assert platform is not None
+    choices = platform.publish_options.get("section", {}).get("choices", [])
+    assert choices == []
+
+
 def test_bilibili_not_publishable_yet():
     assert get_platform("bilibili") is not None
     assert is_publishable("bilibili") is False

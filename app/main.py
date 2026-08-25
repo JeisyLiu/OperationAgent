@@ -14,6 +14,7 @@ from app.api.settings import router as settings_router
 from app.api.platforms import router as platforms_router
 from app.api.worker import router as worker_router
 from app.config import APP_VERSION, settings
+from app.db.migrate import run_migrations
 from app.scheduler.worker import worker
 
 logging.basicConfig(
@@ -27,6 +28,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    run_migrations()
     await worker.start()
     yield
     await worker.stop()

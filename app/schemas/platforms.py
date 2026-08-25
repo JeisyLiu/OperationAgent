@@ -1,6 +1,8 @@
-from pydantic import BaseModel
+from typing import Any
 
-from app.platforms import is_publishable, list_platforms
+from pydantic import BaseModel, Field
+
+from app.platforms import is_publishable
 from app.schemas.accounts import AccountSkill
 
 
@@ -14,6 +16,7 @@ class PlatformResponse(BaseModel):
     media_types: list[str]
     default_persona: str | None = None
     default_skill: AccountSkill | None = None
+    publish_options: dict[str, Any] = Field(default_factory=dict)
 
 
 def to_platform_response(platform) -> PlatformResponse:
@@ -30,4 +33,5 @@ def to_platform_response(platform) -> PlatformResponse:
         media_types=platform.media_types,
         default_persona=platform.default_persona,
         default_skill=default_skill,
+        publish_options=dict(platform.publish_options or {}),
     )

@@ -67,6 +67,24 @@ async function refreshDashboard() {
 let platformCatalog = [];
 let cachedAccounts = [];
 let cachedVariants = [];
+let wizardStep = 1;
+let wizardAssetId = null;
+let reviewVariants = [];
+
+function platformMeta(platformId) {
+  return platformCatalog.find((p) => p.id === platformId) || { id: platformId, display_name: platformId };
+}
+
+function sectionChoices(platformId) {
+  const meta = platformMeta(platformId);
+  const section = meta.publish_options?.section;
+  return section?.choices || [];
+}
+
+function sectionLabel(platformId) {
+  const meta = platformMeta(platformId);
+  return meta.publish_options?.section?.label || "Section";
+}
 
 function isPublishable(platformId) {
   const match = platformCatalog.find((p) => p.id === platformId);
@@ -97,7 +115,17 @@ async function loadPlatforms() {
     throw new Error("Platform catalog is empty");
   }
   renderPlatformOptions("account-platform");
-  renderPlatformOptions("variant-platform");
+}
+
+function setWizardStep(step) {
+  wizardStep = step;
+  document.querySelectorAll(".wizard-step").forEach((el) => {
+    el.classList.toggle("active", Number(el.dataset.wizardStep) === step);
+  });
+  for (let i = 1; i <= 3; i += 1) {
+    const panel = document.getElementById(`wizard-step-${i}`);
+    if (panel) panel.hidden = i !== step;
+  }
 }
 
 function showBootError(message) {
@@ -126,7 +154,7 @@ async function refreshAccounts() {
     )
     .join("") || `<div class="hint">No accounts yet.</div>`;
 
-  renderAccountPicks();
+  renderWizardAccountPicks();
 
   document.querySelectorAll("[data-skill]").forEach((btn) => {
     btn.onclick = () => openSkillEditor(Number(btn.dataset.skill));
@@ -155,19 +183,110 @@ async function refreshAccounts() {
   });
 }
 
-function renderAccountPicks() {
-  const container = document.getElementById("generate-account-picks");
+function renderWizardAccountPicks() {
+  const container = document.getElementById("wizard-account-picks");
   if (!container) return;
   const active = cachedAccounts.filter((a) => a.status === "ACTIVE");
-  container.innerHTML = active
-    .map(
-      (a) => `
-      <label>
-        <input type="checkbox" name="generate_account" value="${a.id}" />
-        #${a.id} ${a.account_name} (${platformLabel(a.platform)})
-      </label>`
-    )
-    .join("") || `<span class="hint">No ACTIVE accounts.</span>`;
+  if (active.length === 0) {
+    container.innerHTML = `<div class="hint">No ACTIVE accounts. Mark accounts active first.</div>`;
+    return;
+  }
+  const grouped = active.reduce((acc, account) => {
+    if (!acc[account.platform]) acc[account.platform] = [];
+    acc[account.platform].push(account);
+    return acc;
+  }, {});
+  container.innerHTML = Object.entries(grouped)
+    .map(([platformId, accounts]) => {
+      const meta = platformMeta(platformId);
+      const rows = accounts
+        .map(
+          (a) => `
+          <label>
+            <input type="checkbox" name="wizard_account" value="${a.id}" checked />
+            #${a.id} ${a.account_name}
+          </label>`
+        )
+        .join("");
+      return `
+        <div class="account-group">
+          <h4>${meta.display_name}${meta.publishable ? "" : " (login only)"}</h4>
+          <div class="account-picks">${rows}</div>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderReviewPackages() {
+  const container = document.getElementById("review-packages");
+  if (!container) return;
+  if (!reviewVariants.length) {
+    container.innerHTML = `<div class="hint">No generated packages yet. Go back and generate first.</div>`;
+    return;
+  }
+  container.innerHTML = reviewVariants
+    .map((v) => {
+      const publishable = isPublishable(v.platform);
+      const choices = sectionChoices(v.platform);
+      const sectionField = choices.length
+        ? `<label>${sectionLabel(v.platform)}
+            <select data-field="section" data-variant-id="${v.id}">
+              <option value="">—</option>
+              ${choices.map((c) => `<option value="${c}" ${v.section === c ? "selected" : ""}>${c}</option>`).join("")}
+            </select>
+          </label>`
+        : "";
+      return `
+        <article class="package-card" data-variant-id="${v.id}">
+          <div class="package-card-header">
+            <label>
+              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "checked" : "disabled"} />
+              <strong>${v.account_name || `Account #${v.account_id}`}</strong>
+              <span>· ${platformLabel(v.platform)}</span>
+            </label>
+            <span class="package-badge ${publishable ? "publishable" : "login-only"}">${publishable ? "publishable" : "login only"}</span>
+          </div>
+          <label>Title
+            <input data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
+          </label>
+          <label>Caption
+            <textarea data-field="caption" data-variant-id="${v.id}" rows="4">${escapeHtml(v.caption || "")}</textarea>
+          </label>
+          <label>Hashtags (comma-separated)
+            <input data-field="hashtags" data-variant-id="${v.id}" value="${escapeHtml((v.hashtags || []).join(", "))}" />
+          </label>
+          ${sectionField}
+        </article>`;
+    })
+    .join("");
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function collectReviewEdits() {
+  const byId = {};
+  reviewVariants.forEach((v) => {
+    byId[v.id] = { ...v };
+  });
+  document.querySelectorAll("[data-field]").forEach((el) => {
+    const variantId = Number(el.dataset.variantId);
+    const field = el.dataset.field;
+    if (!byId[variantId]) return;
+    if (field === "hashtags") {
+      byId[variantId].hashtags = el.value
+        ? el.value.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+    } else {
+      byId[variantId][field] = el.value;
+    }
+  });
+  return Object.values(byId);
 }
 
 function openSkillEditor(accountId) {
@@ -211,73 +330,165 @@ document.getElementById("skill-form").onsubmit = async (e) => {
 };
 
 function renderEnqueueList() {
-  const container = document.getElementById("enqueue-list");
-  if (!container) return;
-  const generated = cachedVariants.filter((v) => v.generated_by === "skill" && v.account_id);
-  container.innerHTML = generated
-    .map((v) => {
-      const publishable = isPublishable(v.platform);
-      return `
-      <label class="row enqueue-row">
-        <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "" : "disabled"} />
-        <div>Variant #${v.id}</div>
-        <div>${platformLabel(v.platform)}</div>
-        <div>${(v.title || v.caption || "").slice(0, 80)}</div>
-        <div>${publishable ? "publishable" : "login only"}</div>
-      </label>`;
-    })
-    .join("") || `<div class="hint">No generated variants yet.</div>`;
+  // legacy no-op; wizard step 3 handles enqueue UI
 }
 
 async function refreshContent() {
   const assets = await api("/api/content/assets");
   cachedVariants = await api("/api/content/variants");
   document.getElementById("content-list").innerHTML = [
-    ...assets.map((a) => `<div class="row"><div>Asset #${a.id}</div><div>${a.title}</div><div>${a.status}</div></div>`),
+    ...assets.map((a) => `<div class="row"><div>Asset #${a.id}</div><div>${a.title}</div><div>${a.status}</div><div>${a.media_type}</div></div>`),
     ...cachedVariants.map((v) => `<div class="row"><div>Variant #${v.id}</div><div>${platformLabel(v.platform)}</div><div>${v.title || ""}</div><div>acct #${v.account_id || "-"}</div></div>`),
   ].join("");
-  renderEnqueueList();
 }
 
-document.getElementById("btn-generate-variants").onclick = async () => {
-  const assetId = Number(document.getElementById("generate-asset-id").value);
-  const accountIds = Array.from(document.querySelectorAll('input[name="generate_account"]:checked')).map(
-    (el) => Number(el.value)
-  );
-  if (!assetId || accountIds.length === 0) {
-    alert("Provide Asset ID and select at least one ACTIVE account.");
-    return;
-  }
+document.getElementById("publish-mother-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const tagsRaw = String(fd.get("tags") || "");
+  const tags = tagsRaw ? tagsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
   try {
-    const result = await api(`/api/content/assets/${assetId}/generate-variants`, {
+    const asset = await api("/api/content/assets", {
       method: "POST",
-      body: JSON.stringify({ account_ids: accountIds }),
+      body: JSON.stringify({
+        title: fd.get("title"),
+        base_caption: fd.get("base_caption"),
+        media_type: "text",
+        tags,
+      }),
     });
-    document.getElementById("generate-result").textContent = JSON.stringify(result, null, 2);
+    wizardAssetId = asset.id;
+    const video = fd.get("video");
+    if (video && video.size > 0) {
+      const upload = new FormData();
+      upload.append("file", video);
+      const res = await fetch(`/api/content/assets/${asset.id}/upload`, { method: "POST", body: upload });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Video upload failed");
+      }
+    }
+    const images = fd.getAll("images").filter((f) => f && f.size > 0);
+    if (images.length > 0) {
+      const upload = new FormData();
+      images.forEach((file) => upload.append("files", file));
+      const res = await fetch(`/api/content/assets/${asset.id}/upload-images`, { method: "POST", body: upload });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Image upload failed");
+      }
+    }
+    renderWizardAccountPicks();
+    setWizardStep(2);
     await refreshContent();
   } catch (err) {
     alert(err.message);
   }
 };
 
-document.getElementById("btn-enqueue-selected").onclick = async () => {
-  const items = Array.from(document.querySelectorAll('input[name="enqueue_variant"]:checked')).map((el) => ({
-    content_variant_id: Number(el.value),
-    account_id: Number(el.dataset.accountId),
-  }));
-  if (items.length === 0) {
-    alert("Select at least one publishable variant.");
+document.getElementById("btn-wizard-back-2").onclick = () => setWizardStep(1);
+document.getElementById("btn-wizard-back-3").onclick = () => setWizardStep(2);
+
+document.getElementById("btn-select-all-accounts").onclick = () => {
+  document.querySelectorAll('input[name="wizard_account"]').forEach((el) => {
+    el.checked = true;
+  });
+};
+document.getElementById("btn-select-none-accounts").onclick = () => {
+  document.querySelectorAll('input[name="wizard_account"]').forEach((el) => {
+    el.checked = false;
+  });
+};
+
+document.getElementById("btn-generate-packages").onclick = async () => {
+  const accountIds = Array.from(document.querySelectorAll('input[name="wizard_account"]:checked')).map(
+    (el) => Number(el.value)
+  );
+  if (!wizardAssetId || accountIds.length === 0) {
+    alert("Create mother content first and select at least one ACTIVE account.");
     return;
   }
   try {
+    const result = await api(`/api/content/assets/${wizardAssetId}/generate-variants`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: accountIds }),
+    });
+    document.getElementById("generate-result").textContent = JSON.stringify(result, null, 2);
+    reviewVariants = result.variants || [];
+    renderReviewPackages();
+    setWizardStep(3);
+    await refreshContent();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document.getElementById("btn-select-all-enqueue").onclick = () => {
+  document.querySelectorAll('input[name="enqueue_variant"]:not(:disabled)').forEach((el) => {
+    el.checked = true;
+  });
+};
+
+document.getElementById("btn-save-packages").onclick = async () => {
+  const edits = collectReviewEdits();
+  try {
+    for (const variant of edits) {
+      await api(`/api/content/variants/${variant.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: variant.title || null,
+          caption: variant.caption || null,
+          hashtags: variant.hashtags || [],
+          section: variant.section || "",
+        }),
+      });
+    }
+    reviewVariants = await api(`/api/content/variants?asset_id=${wizardAssetId}`);
+    renderReviewPackages();
+    alert("Saved.");
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document.getElementById("btn-enqueue-selected").onclick = async () => {
+  const edits = collectReviewEdits();
+  const editMap = Object.fromEntries(edits.map((v) => [v.id, v]));
+  const items = Array.from(document.querySelectorAll('input[name="enqueue_variant"]:checked')).map((el) => {
+    const variantId = Number(el.value);
+    const variant = editMap[variantId];
+    return {
+      content_variant_id: variantId,
+      account_id: Number(el.dataset.accountId),
+      _variant: variant,
+    };
+  });
+  if (items.length === 0) {
+    alert("Select at least one publishable package.");
+    return;
+  }
+  try {
+    for (const item of items) {
+      if (item._variant) {
+        await api(`/api/content/variants/${item.content_variant_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: item._variant.title || null,
+            caption: item._variant.caption || null,
+            hashtags: item._variant.hashtags || [],
+            section: item._variant.section || "",
+          }),
+        });
+      }
+    }
     const result = await api("/api/jobs/bulk", {
       method: "POST",
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({
+        items: items.map(({ content_variant_id, account_id }) => ({ content_variant_id, account_id })),
+      }),
     });
     alert(`Created ${result.created.length} job(s). Failed: ${result.failed.length}`);
-    if (result.failed.length) {
-      console.log(result.failed);
-    }
+    if (result.failed.length) console.log(result.failed);
     refreshQueue();
     refreshDashboard();
   } catch (err) {
@@ -362,42 +573,6 @@ document.getElementById("account-form").onsubmit = async (e) => {
   }
 };
 
-document.getElementById("asset-form").onsubmit = async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const asset = await api("/api/content/assets", {
-    method: "POST",
-    body: JSON.stringify({ title: fd.get("title"), media_type: "video" }),
-  });
-  const upload = new FormData();
-  upload.append("file", fd.get("file"));
-  const res = await fetch(`/api/content/assets/${asset.id}/upload`, { method: "POST", body: upload });
-  if (!res.ok) throw new Error("Upload failed");
-  e.target.reset();
-  refreshContent();
-};
-
-document.getElementById("variant-form").onsubmit = async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  try {
-    await api("/api/content/variants", {
-      method: "POST",
-      body: JSON.stringify({
-        asset_id: Number(fd.get("asset_id")),
-        platform: fd.get("platform"),
-        title: fd.get("title"),
-        caption: fd.get("caption"),
-      }),
-    });
-    e.target.reset();
-    renderPlatformOptions("variant-platform");
-    refreshContent();
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
 document.getElementById("job-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -426,6 +601,23 @@ async function refreshWorkerBar() {
 
 document.getElementById("btn-pause").onclick = () => api("/api/worker/pause", { method: "POST" }).then(refreshWorkerBar);
 document.getElementById("btn-stop").onclick = () => api("/api/worker/stop", { method: "POST" }).then(refreshWorkerBar);
+
+document.querySelectorAll(".wizard-step").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const step = Number(btn.dataset.wizardStep);
+    if (step === 2 && !wizardAssetId) {
+      alert("Complete step 1 first.");
+      return;
+    }
+    if (step === 3 && !reviewVariants.length) {
+      alert("Generate content packages in step 2 first.");
+      return;
+    }
+    setWizardStep(step);
+    if (step === 2) renderWizardAccountPicks();
+    if (step === 3) renderReviewPackages();
+  });
+});
 
 async function init() {
   try {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260825c" />
+  <link rel="stylesheet" href="/static/style.css?v=20260825d" />
 </head>
 <body>
   <div class="layout">
@@ -73,38 +73,67 @@
       </section>
 
       <section id="view-content" class="view">
-        <h2>Content</h2>
-        <form id="asset-form" class="inline-form">
-          <input name="title" placeholder="Asset title" required />
-          <input name="file" type="file" accept="video/*" required />
-          <button type="submit">Upload video</button>
-        </form>
-        <div class="generate-panel">
-          <h3>AI generate variants</h3>
-          <p class="hint">Pick an asset and ACTIVE accounts. Generated variants are drafts until you enqueue.</p>
-          <div class="inline-form">
-            <input id="generate-asset-id" type="number" placeholder="Asset ID" />
-            <div id="generate-account-picks" class="account-picks"></div>
-            <button type="button" id="btn-generate-variants">Generate variants</button>
+        <h2>Publish Task</h2>
+        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue.</p>
+
+        <div class="wizard-steps">
+          <button type="button" class="wizard-step active" data-wizard-step="1">1. Mother content</button>
+          <button type="button" class="wizard-step" data-wizard-step="2">2. Target accounts</button>
+          <button type="button" class="wizard-step" data-wizard-step="3">3. Review &amp; enqueue</button>
+        </div>
+
+        <div id="wizard-step-1" class="wizard-panel active">
+          <form id="publish-mother-form" class="publish-form">
+            <label>Title <span class="required">*</span>
+              <input name="title" required placeholder="Post title" />
+            </label>
+            <label>Description <span class="required">*</span>
+              <textarea name="base_caption" rows="4" required placeholder="Core message for all platforms"></textarea>
+            </label>
+            <label>Reference tags (comma-separated)
+              <input name="tags" placeholder="ai, tutorial, vlog" />
+            </label>
+            <label>Video (optional)
+              <input name="video" type="file" accept="video/*" />
+            </label>
+            <label>Images (optional)
+              <input name="images" type="file" accept="image/*" multiple />
+            </label>
+            <div class="actions">
+              <button type="submit">Next: pick accounts</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="wizard-step-2" class="wizard-panel" hidden>
+          <div class="wizard-toolbar">
+            <button type="button" id="btn-select-all-accounts">Select all</button>
+            <button type="button" id="btn-select-none-accounts">Select none</button>
+            <button type="button" id="btn-wizard-back-2">Back</button>
+          </div>
+          <div id="wizard-account-picks" class="account-groups"></div>
+          <div class="actions">
+            <button type="button" id="btn-generate-packages">Generate content packages</button>
           </div>
           <pre id="generate-result" class="generate-result"></pre>
         </div>
-        <div class="generate-panel">
-          <h3>Enqueue selected variants</h3>
-          <p class="hint">Only publishable platforms (e.g. TikTok) can be scheduled. Others show as login-only.</p>
-          <div id="enqueue-list" class="table"></div>
-          <button type="button" id="btn-enqueue-selected">Enqueue selected</button>
+
+        <div id="wizard-step-3" class="wizard-panel" hidden>
+          <div class="wizard-toolbar">
+            <button type="button" id="btn-select-all-enqueue">Select all publishable</button>
+            <button type="button" id="btn-wizard-back-3">Back</button>
+          </div>
+          <div id="review-packages" class="review-packages"></div>
+          <div class="actions">
+            <button type="button" id="btn-save-packages">Save edits</button>
+            <button type="button" id="btn-enqueue-selected">Enqueue selected</button>
+          </div>
         </div>
-        <form id="variant-form" class="inline-form">
-          <input name="asset_id" type="number" placeholder="Asset ID" required />
-          <select name="platform" id="variant-platform" required>
-            <option value="">Loading platforms…</option>
-          </select>
-          <input name="title" placeholder="Variant title" />
-          <input name="caption" placeholder="Caption" />
-          <button type="submit" id="variant-submit">Create variant</button>
-        </form>
-        <div id="content-list" class="table"></div>
+
+        <details class="content-history">
+          <summary>Recent assets &amp; variants</summary>
+          <div id="content-list" class="table"></div>
+        </details>
       </section>
 
       <section id="view-queue" class="view">
@@ -135,6 +164,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260825c"></script>
+  <script src="/static/app.js?v=20260825d"></script>
 </body>
 </html>

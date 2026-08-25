@@ -26,10 +26,26 @@ def client():
     return TestClient(app)
 
 
-def test_asset_upload_and_variant(client: TestClient):
+def test_asset_create_requires_base_caption(client: TestClient):
+    resp = client.post("/api/content/assets", json={"title": "only title"})
+    assert resp.status_code == 422
+
+
+def test_text_asset_without_media(client: TestClient):
+    resp = client.post(
+        "/api/content/assets",
+        json={"title": "text post", "base_caption": "Body", "tags": ["ai", "tips"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "READY"
+    assert data["media_type"] == "text"
+    assert data["tags"] == ["ai", "tips"]
+    assert data["file_path"] is None
+
     asset_resp = client.post(
         "/api/content/assets",
-        json={"title": "demo video", "media_type": "video"},
+        json={"title": "demo video", "base_caption": "Demo description", "media_type": "video"},
     )
     assert asset_resp.status_code == 200
     asset_id = asset_resp.json()["id"]

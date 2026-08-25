@@ -61,7 +61,7 @@ def test_generate_variants_requires_ai_settings(client: TestClient):
     try:
         account = account_service.create(db, platform="tiktok", account_name="a1")
         account_service.mark_active(db, account)
-        asset = content_service.create_asset(db, title="v", media_type="video")
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="video")
         content_service.save_upload(db, asset, "demo.mp4", b"data")
         account_id = account.id
         asset_id = asset.id
@@ -96,7 +96,7 @@ def test_generate_variants_success(mock_chat, client: TestClient):
             skill=AccountSkill(tone="friendly"),
         )
         account_service.mark_active(db, account)
-        asset = content_service.create_asset(db, title="v", media_type="video", base_caption="base")
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="video")
         content_service.save_upload(db, asset, "demo.mp4", b"data")
         asset_id = asset.id
         account_id = account.id
@@ -114,6 +114,106 @@ def test_generate_variants_success(mock_chat, client: TestClient):
     assert body["variants"][0]["account_id"] == account_id
 
 
+@patch("app.services.content_generate_service.llm_client.chat")
+def test_generate_variants_without_media(mock_chat, client: TestClient):
+    mock_chat.return_value = '{"title": "T", "caption": "Text only", "hashtags": [], "section": ""}'
+    db = SessionLocal()
+    try:
+        from app.services.settings_service import settings_service
+
+        settings_service.save(
+            db,
+            provider="openai",
+            base_url=None,
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+        account = account_service.create(db, platform="tiktok", account_name="a1")
+        account_service.mark_active(db, account)
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="text", tags=["ai"])
+        asset_id = asset.id
+        account_id = account.id
+    finally:
+        db.close()
+
+    resp = client.post(
+        f"/api/content/assets/{asset_id}/generate-variants",
+        json={"account_ids": [account_id]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["variants"][0]["caption"] == "Text only"
+
+
+@patch("app.services.content_generate_service.llm_client.chat")
+def test_generate_variants_section_for_bilibili(mock_chat, client: TestClient):
+    mock_chat.return_value = (
+        '{"title": "B", "caption": "Hello", "hashtags": ["test"], "section": "知识"}'
+    )
+    db = SessionLocal()
+    try:
+        from app.services.settings_service import settings_service
+
+        settings_service.save(
+            db,
+            provider="openai",
+            base_url=None,
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+        account = account_service.create(db, platform="bilibili", account_name="b1")
+        account_service.mark_active(db, account)
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="text")
+        asset_id = asset.id
+        account_id = account.id
+    finally:
+        db.close()
+
+    resp = client.post(
+        f"/api/content/assets/{asset_id}/generate-variants",
+        json={"account_ids": [account_id]},
+    )
+    assert resp.status_code == 200
+    variant = resp.json()["variants"][0]
+    assert variant["section"] == "知识"
+
+    patch = client.patch(
+        f"/api/content/variants/{variant['id']}",
+        json={"section": "生活"},
+    )
+    assert patch.status_code == 200
+    assert patch.json()["section"] == "生活"
+
+
+def test_build_task_prompt_includes_section():
+    from datetime import datetime
+
+    from app.services.job_service import job_service
+
+    db = SessionLocal()
+    try:
+        account = account_service.create(db, platform="tiktok", account_name="t1")
+        account_service.mark_active(db, account)
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="text")
+        variant = content_service.create_variant(
+            db,
+            asset_id=asset.id,
+            platform="tiktok",
+            title="t",
+            caption="c",
+            extra={"section": "Trending"},
+        )
+        job = job_service.create(
+            db,
+            content_variant_id=variant.id,
+            account_id=account.id,
+            scheduled_at=datetime.utcnow(),
+        )
+        prompt = job_service.build_task_prompt(db, job)
+        assert "分区/版块：Trending" in prompt
+    finally:
+        db.close()
+
+
 def test_bulk_jobs_tiktok_and_bilibili(client: TestClient):
     db = SessionLocal()
     try:
@@ -121,7 +221,7 @@ def test_bulk_jobs_tiktok_and_bilibili(client: TestClient):
         account_service.mark_active(db, tiktok)
         bili = account_service.create(db, platform="bilibili", account_name="b1")
         account_service.mark_active(db, bili)
-        asset = content_service.create_asset(db, title="v", media_type="video")
+        asset = content_service.create_asset(db, title="v", base_caption="base", media_type="video")
         content_service.save_upload(db, asset, "demo.mp4", b"data")
         tiktok_variant = content_service.create_variant(
             db, asset_id=asset.id, platform="tiktok", title="t", caption="c"

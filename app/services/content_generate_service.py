@@ -46,6 +46,21 @@ class ContentGenerateService:
             return value
         return value[:max_length]
 
+    def _normalize_section(self, platform_id: str, section: str | None) -> str:
+        if not section:
+            return ""
+        platform = get_platform(platform_id)
+        if not platform:
+            return section
+        choices = (
+            platform.publish_options.get("section", {}).get("choices")
+            if platform.publish_options
+            else None
+        )
+        if not choices:
+            return section
+        return section if section in choices else ""
+
     def _apply_schema_limits(self, platform_id: str, payload: dict) -> dict:
         platform = get_platform(platform_id)
         schema = platform.variant_schema if platform else {}
@@ -57,6 +72,7 @@ class ContentGenerateService:
             "title": self._truncate_field(title, title_schema.get("max_length")),
             "caption": self._truncate_field(caption, caption_schema.get("max_length")),
             "hashtags": payload.get("hashtags") or [],
+            "section": self._normalize_section(platform_id, payload.get("section")),
         }
 
     def generate_for_accounts(
@@ -73,10 +89,10 @@ class ContentGenerateService:
         asset = content_service.get_asset(db, asset_id)
         if asset is None:
             raise ValueError("Asset not found")
-        if not asset.file_path:
-            raise ValueError("Asset file not uploaded yet")
 
         template = self._load_prompt_template()
+        attachments = content_service._parse_attachments(asset)
+        source_tags = ", ".join(attachments.get("tags") or [])
         variants: list = []
         errors: list[GenerateVariantError] = []
 
@@ -99,14 +115,17 @@ class ContentGenerateService:
             platform = get_platform(account.platform)
             skill = account_service.resolve_skill(account) or AccountSkill()
             skill_json = skill.model_dump(exclude_none=True)
+            section_options = platform.publish_options.get("section", {}) if platform else {}
             prompt = template.format(
                 asset_title=asset.title,
                 base_caption=asset.base_caption or "",
+                source_tags=source_tags or "(none)",
                 account_name=account.account_name,
                 platform=account.platform,
                 persona=account_service.resolve_persona(account),
                 skill_json=json.dumps(skill_json, ensure_ascii=False),
                 variant_schema=json.dumps(platform.variant_schema if platform else {}, ensure_ascii=False),
+                section_options=json.dumps(section_options, ensure_ascii=False),
             )
             try:
                 reply = llm_client.chat(
@@ -118,6 +137,13 @@ class ContentGenerateService:
                     max_tokens=800,
                 )
                 parsed = self._apply_schema_limits(account.platform, self._parse_llm_json(reply))
+                extra = {
+                    "account_id": account.id,
+                    "generated_by": "skill",
+                    "account_name": account.account_name,
+                }
+                if parsed.get("section"):
+                    extra["section"] = parsed["section"]
                 variant = content_service.create_variant(
                     db,
                     asset_id=asset_id,
@@ -125,11 +151,7 @@ class ContentGenerateService:
                     title=parsed.get("title"),
                     caption=parsed.get("caption"),
                     hashtags=parsed.get("hashtags"),
-                    extra={
-                        "account_id": account.id,
-                        "generated_by": "skill",
-                        "account_name": account.account_name,
-                    },
+                    extra=extra,
                 )
                 variants.append(variant)
             except Exception as exc:

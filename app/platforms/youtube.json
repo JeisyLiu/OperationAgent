@@ -26,5 +26,6 @@
     "topics": ["tutorials", "reviews", "storytelling", "shorts"],
     "hashtag_style": "Use sparingly in description; prefer searchable keywords in title",
     "extra_prompt": "Title must stand alone in search. Description can be longer; front-load the value proposition."
-  }
+  },
+  "publish_options": {}
 }
