@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260825b" />
 </head>
 <body>
   <div class="layout">
@@ -22,6 +22,7 @@
     </aside>
 
     <main>
+      <div id="boot-error" class="boot-error" hidden></div>
       <section id="view-dashboard" class="view active">
         <h2>Dashboard</h2>
         <div class="stats" id="dashboard-stats"></div>
@@ -46,8 +47,11 @@
 
       <section id="view-accounts" class="view">
         <h2>Accounts</h2>
+        <p class="hint">Choose a platform from the catalog, then Open profile → login → Mark active.</p>
         <form id="account-form" class="inline-form">
-          <input name="platform" value="tiktok" />
+          <select name="platform" id="account-platform" required>
+            <option value="">Loading platforms…</option>
+          </select>
           <input name="account_name" placeholder="Account name" required />
           <button type="submit">Add account</button>
         </form>
@@ -63,9 +67,12 @@
         </form>
         <form id="variant-form" class="inline-form">
           <input name="asset_id" type="number" placeholder="Asset ID" required />
+          <select name="platform" id="variant-platform" required>
+            <option value="">Loading platforms…</option>
+          </select>
           <input name="title" placeholder="Variant title" />
           <input name="caption" placeholder="Caption" />
-          <button type="submit">Create TikTok variant</button>
+          <button type="submit" id="variant-submit">Create variant</button>
         </form>
         <div id="content-list" class="table"></div>
       </section>
@@ -98,6 +105,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260825b"></script>
 </body>
 </html>

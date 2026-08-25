@@ -3,7 +3,8 @@ import logging
 from pathlib import Path
 
 from app.agent.base import AgentAdapter, AgentResult, AgentStatus, AgentTask
-from app.constants import PLATFORM_URLS, classify_failure
+from app.constants import classify_failure
+from app.platforms import require_platform
 from app.db.session import SessionLocal
 from app.runtime.playwright_runtime import PlaywrightRuntime
 from app.services.settings_service import settings_service
@@ -26,7 +27,12 @@ class BrowserUseAdapter(AgentAdapter):
         execution_dir.mkdir(parents=True, exist_ok=True)
         screenshots: list[str] = []
 
-        url = PLATFORM_URLS.get(task.platform, "https://www.google.com")
+        try:
+            platform = require_platform(task.platform)
+            url = platform.open_url
+        except Exception:
+            url = "https://www.google.com"
+
         profile_path = Path(task.profile_path)
         if not profile_path.is_absolute():
             profile_path = Path("data") / profile_path

@@ -1,0 +1,19 @@
+{
+  "id": "douyin",
+  "display_name": "Douyin (China)",
+  "region": "cn",
+  "home_url": "https://www.douyin.com/",
+  "login_url": "https://www.douyin.com/",
+  "upload_url": "https://creator.douyin.com/creator-micro/content/upload",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 55 },
+    "caption": { "required": true, "max_length": 1000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

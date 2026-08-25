@@ -87,6 +87,10 @@ class AccountService:
         db.refresh(account)
         return account
 
+    def delete(self, db: Session, account: Account) -> None:
+        db.delete(account)
+        db.commit()
+
     def resolve_profile_path(self, account: Account) -> Path:
         return settings.data_dir / account.browser_profile
 

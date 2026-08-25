@@ -1,0 +1,19 @@
+{
+  "id": "twitter",
+  "display_name": "X (Twitter)",
+  "region": "global",
+  "home_url": "https://x.com/",
+  "login_url": "https://x.com/i/flow/login",
+  "upload_url": "https://x.com/compose/post",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video", "image", "text"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 0 },
+    "caption": { "required": true, "max_length": 280 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "sign in"]
+  }
+}

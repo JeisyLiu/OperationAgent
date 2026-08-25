@@ -1,0 +1,19 @@
+{
+  "id": "weibo",
+  "display_name": "Weibo",
+  "region": "cn",
+  "home_url": "https://weibo.com/",
+  "login_url": "https://weibo.com/login.php",
+  "upload_url": "https://weibo.com/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image", "video"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 0 },
+    "caption": { "required": true, "max_length": 2000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

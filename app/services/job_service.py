@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.constants import JobStatus, RETRY_BACKOFF_SECONDS, utcnow
 from app.db.models import ExecutionLog, PublishJob
+from app.platforms import is_publishable, require_platform
 from app.services.account_service import account_service
 from app.services.content_service import content_service
 
@@ -38,6 +39,16 @@ class JobService:
             raise ValueError("Account not found")
         if account.status != "ACTIVE":
             raise ValueError("Account must be ACTIVE before scheduling jobs")
+
+        try:
+            require_platform(variant.platform)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+        if not is_publishable(variant.platform):
+            raise ValueError(
+                f"Platform '{variant.platform}' does not support publishing yet. "
+                "You can create an account and log in, but scheduling jobs is not available."
+            )
 
         job = PublishJob(
             content_variant_id=content_variant_id,

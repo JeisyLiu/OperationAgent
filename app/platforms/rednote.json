@@ -1,0 +1,19 @@
+{
+  "id": "rednote",
+  "display_name": "RedNote (Xiaohongshu)",
+  "region": "cn",
+  "home_url": "https://www.xiaohongshu.com/",
+  "login_url": "https://www.xiaohongshu.com/login",
+  "upload_url": "https://creator.xiaohongshu.com/publish/publish",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video", "image"],
+  "variant_schema": {
+    "title": { "required": true, "max_length": 20 },
+    "caption": { "required": true, "max_length": 1000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

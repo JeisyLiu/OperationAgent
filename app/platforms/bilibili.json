@@ -1,0 +1,19 @@
+{
+  "id": "bilibili",
+  "display_name": "Bilibili",
+  "region": "cn",
+  "home_url": "https://www.bilibili.com/",
+  "login_url": "https://passport.bilibili.com/login",
+  "upload_url": "https://member.bilibili.com/platform/upload/video/frame",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video"],
+  "variant_schema": {
+    "title": { "required": true, "max_length": 80 },
+    "caption": { "required": false, "max_length": 2000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

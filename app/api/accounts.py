@@ -3,8 +3,13 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.constants import PLATFORM_URLS
 from app.db.session import get_db
+from app.platforms import (
+    PlatformDisabledError,
+    PlatformNotFoundError,
+    get_open_url,
+    require_platform,
+)
 from app.runtime.playwright_runtime import PlaywrightRuntime
 from app.schemas.accounts import (
     AccountActionResponse,
@@ -30,9 +35,16 @@ def list_accounts(
 
 @router.post("", response_model=AccountResponse)
 def create_account(payload: AccountCreate, db: Session = Depends(get_db)) -> AccountResponse:
+    try:
+        require_platform(payload.platform)
+    except PlatformNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PlatformDisabledError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return account_service.create(
         db,
-        platform=payload.platform,
+        platform=payload.platform.lower(),
         account_name=payload.account_name,
         persona=payload.persona,
         language=payload.language,
@@ -68,11 +80,38 @@ def patch_account(
     )
 
 
+@router.delete("/{account_id}")
+def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
+    account = account_service.get(db, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if account_id in _profile_runtimes:
+        raise HTTPException(
+            status_code=400,
+            detail="Close the open profile browser before deleting this account",
+        )
+
+    account_service.delete(db, account)
+    return {"status": "deleted", "message": "Account removed. Profile directory was kept on disk."}
+
+
 @router.post("/{account_id}/open-profile", response_model=AccountActionResponse)
 async def open_profile(account_id: int, db: Session = Depends(get_db)) -> AccountActionResponse:
     account = account_service.get(db, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    try:
+        require_platform(account.platform)
+        url = get_open_url(account.platform)
+    except PlatformNotFoundError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Account has unknown platform '{account.platform}'. Delete and recreate the account.",
+        ) from exc
+    except PlatformDisabledError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if account_id in _profile_runtimes:
         await _profile_runtimes[account_id].close()
@@ -80,8 +119,14 @@ async def open_profile(account_id: int, db: Session = Depends(get_db)) -> Accoun
 
     runtime = PlaywrightRuntime()
     profile_path = account_service.resolve_profile_path(account)
-    url = PLATFORM_URLS.get(account.platform, "https://www.google.com")
-    await runtime.open_profile(profile_path, url=url)
+    try:
+        await runtime.open_profile(profile_path, url=url)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to open browser profile: {exc}",
+        ) from exc
+
     _profile_runtimes[account_id] = runtime
 
     return AccountActionResponse(

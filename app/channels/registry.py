@@ -6,6 +6,10 @@ _REGISTRY: dict[str, Channel] = {
 }
 
 
+def has_channel(channel_id: str) -> bool:
+    return channel_id.lower() in _REGISTRY
+
+
 def get_channel(platform: str) -> Channel:
     channel = _REGISTRY.get(platform.lower())
     if channel is None:

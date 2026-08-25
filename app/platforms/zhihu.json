@@ -1,0 +1,19 @@
+{
+  "id": "zhihu",
+  "display_name": "Zhihu",
+  "region": "cn",
+  "home_url": "https://www.zhihu.com/",
+  "login_url": "https://www.zhihu.com/signin",
+  "upload_url": "https://www.zhihu.com/question",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image", "video"],
+  "variant_schema": {
+    "title": { "required": true, "max_length": 100 },
+    "caption": { "required": true, "max_length": 100000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

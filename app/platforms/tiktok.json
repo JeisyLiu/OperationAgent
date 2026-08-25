@@ -1,0 +1,19 @@
+{
+  "id": "tiktok",
+  "display_name": "TikTok (International)",
+  "region": "global",
+  "home_url": "https://www.tiktok.com/",
+  "login_url": "https://www.tiktok.com/login",
+  "upload_url": "https://www.tiktok.com/upload",
+  "enabled": true,
+  "channel": "tiktok",
+  "media_types": ["video"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 150 },
+    "caption": { "required": true, "max_length": 2200 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["login", "sign in"]
+  }
+}

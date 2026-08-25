@@ -1,0 +1,19 @@
+{
+  "id": "kuaishou",
+  "display_name": "Kuaishou",
+  "region": "cn",
+  "home_url": "https://www.kuaishou.com/",
+  "login_url": "https://www.kuaishou.com/",
+  "upload_url": "https://cp.kuaishou.com/article/publish/video",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 50 },
+    "caption": { "required": true, "max_length": 500 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["登录", "login"]
+  }
+}

@@ -73,6 +73,18 @@ Expected: `{"status":"ok","version":"0.2.0"}`
 | Content | `GET/POST /api/content/assets`, upload, variants |
 | Jobs | `GET/POST /api/jobs`, cancel/retry/logs |
 | Worker | `GET /api/worker/status`, pause/stop |
+| Platforms | `GET /api/platforms` |
+
+## Platforms
+
+Supported platforms are defined in [`app/platforms/*.json`](app/platforms/). The UI shows a dropdown from this catalog instead of free-text platform names.
+
+- **Login ready:** all enabled platforms in the catalog (TikTok, Douyin, Kuaishou, YouTube, X/Twitter, Instagram, Facebook, Reddit, Bilibili, RedNote, Zhihu, Weibo)
+- **Publishing ready:** only platforms with a Channel implementation (currently **TikTok**)
+
+To add a platform later: add a JSON file under `app/platforms/`, then implement a Channel when publishing is needed.
+
+Invalid legacy accounts (bad platform slug) can be removed with `DELETE /api/accounts/{id}`.
 
 ## Local data layout
 

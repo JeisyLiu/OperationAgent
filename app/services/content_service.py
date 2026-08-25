@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import ContentAsset, ContentVariant
+from app.platforms import require_platform
 
 
 class ContentService:
@@ -81,6 +82,7 @@ class ContentService:
         asset = self.get_asset(db, asset_id)
         if asset is None:
             raise ValueError("Asset not found")
+        require_platform(platform)
         if asset.file_path:
             file_path = self.resolve_file_path(asset.file_path)
             if not file_path.exists():
@@ -88,7 +90,7 @@ class ContentService:
 
         variant = ContentVariant(
             asset_id=asset_id,
-            platform=platform,
+            platform=platform.lower(),
             title=title,
             caption=caption,
             hashtags_json=json.dumps(hashtags or []),

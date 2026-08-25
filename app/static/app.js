@@ -64,6 +64,42 @@ async function refreshDashboard() {
     .join("");
 }
 
+let platformCatalog = [];
+
+function platformLabel(platformId) {
+  const match = platformCatalog.find((p) => p.id === platformId);
+  if (!match) return platformId;
+  return match.publishable ? match.display_name : `${match.display_name} (login only)`;
+}
+
+function renderPlatformOptions(selectId, { publishableOnly = false } = {}) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  const items = platformCatalog.filter((p) => !publishableOnly || p.publishable);
+  select.innerHTML = items
+    .map(
+      (p) =>
+        `<option value="${p.id}">${p.display_name}${p.publishable ? "" : " (login only)"}</option>`
+    )
+    .join("");
+}
+
+async function loadPlatforms() {
+  platformCatalog = await api("/api/platforms");
+  if (!Array.isArray(platformCatalog) || platformCatalog.length === 0) {
+    throw new Error("Platform catalog is empty");
+  }
+  renderPlatformOptions("account-platform");
+  renderPlatformOptions("variant-platform");
+}
+
+function showBootError(message) {
+  const el = document.getElementById("boot-error");
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = message;
+}
+
 async function refreshAccounts() {
   const accounts = await api("/api/accounts");
   document.getElementById("accounts-list").innerHTML = accounts
@@ -71,15 +107,16 @@ async function refreshAccounts() {
       (a) => `
       <div class="row">
         <div>#${a.id} ${a.account_name}</div>
-        <div>${a.platform}</div>
+        <div>${platformLabel(a.platform)}</div>
         <div>${a.status}</div>
         <div class="actions">
-          <button data-open="${a.id}">Open profile</button>
-          <button data-active="${a.id}">Mark active</button>
+          <button type="button" data-open="${a.id}">Open profile</button>
+          <button type="button" data-active="${a.id}">Mark active</button>
+          <button type="button" class="danger" data-delete="${a.id}">Delete</button>
         </div>
       </div>`
     )
-    .join("");
+    .join("") || `<div class="hint">No accounts yet.</div>`;
 
   document.querySelectorAll("[data-open]").forEach((btn) => {
     btn.onclick = () => api(`/api/accounts/${btn.dataset.open}/open-profile`, { method: "POST" })
@@ -90,6 +127,18 @@ async function refreshAccounts() {
     btn.onclick = () => api(`/api/accounts/${btn.dataset.active}/mark-active`, { method: "POST" })
       .then(() => refreshAccounts())
       .catch((e) => alert(e.message));
+  });
+  document.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.onclick = () => {
+      if (!confirm("Delete this account record? Profile folder stays on disk.")) return;
+      fetch(`/api/accounts/${btn.dataset.delete}`, { method: "DELETE" })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || res.statusText);
+          refreshAccounts();
+        })
+        .catch((e) => alert(e.message));
+    };
   });
 }
 
@@ -169,9 +218,14 @@ document.getElementById("test-ai").onclick = async () => {
 document.getElementById("account-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  await api("/api/accounts", { method: "POST", body: JSON.stringify(Object.fromEntries(fd.entries())) });
-  e.target.reset();
-  refreshAccounts();
+  try {
+    await api("/api/accounts", { method: "POST", body: JSON.stringify(Object.fromEntries(fd.entries())) });
+    e.target.reset();
+    renderPlatformOptions("account-platform");
+    refreshAccounts();
+  } catch (err) {
+    alert(err.message);
+  }
 };
 
 document.getElementById("asset-form").onsubmit = async (e) => {
@@ -192,31 +246,40 @@ document.getElementById("asset-form").onsubmit = async (e) => {
 document.getElementById("variant-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  await api("/api/content/variants", {
-    method: "POST",
-    body: JSON.stringify({
-      asset_id: Number(fd.get("asset_id")),
-      platform: "tiktok",
-      title: fd.get("title"),
-      caption: fd.get("caption"),
-    }),
-  });
-  e.target.reset();
-  refreshContent();
+  try {
+    await api("/api/content/variants", {
+      method: "POST",
+      body: JSON.stringify({
+        asset_id: Number(fd.get("asset_id")),
+        platform: fd.get("platform"),
+        title: fd.get("title"),
+        caption: fd.get("caption"),
+      }),
+    });
+    e.target.reset();
+    renderPlatformOptions("variant-platform");
+    refreshContent();
+  } catch (err) {
+    alert(err.message);
+  }
 };
 
 document.getElementById("job-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  await api("/api/jobs", {
-    method: "POST",
-    body: JSON.stringify({
-      content_variant_id: Number(fd.get("variant_id")),
-      account_id: Number(fd.get("account_id")),
-    }),
-  });
-  refreshQueue();
-  refreshDashboard();
+  try {
+    await api("/api/jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        content_variant_id: Number(fd.get("variant_id")),
+        account_id: Number(fd.get("account_id")),
+      }),
+    });
+    refreshQueue();
+    refreshDashboard();
+  } catch (err) {
+    alert(err.message);
+  }
 };
 
 async function refreshWorkerBar() {
@@ -231,14 +294,20 @@ document.getElementById("btn-pause").onclick = () => api("/api/worker/pause", { 
 document.getElementById("btn-stop").onclick = () => api("/api/worker/stop", { method: "POST" }).then(refreshWorkerBar);
 
 async function init() {
-  const health = await api("/health");
-  document.getElementById("app-version").textContent = `v${health.version}`;
-  await Promise.all([refreshDashboard(), refreshAccounts(), refreshContent(), refreshQueue(), refreshWorkerBar()]);
-  setInterval(() => {
-    refreshDashboard();
-    refreshQueue();
-    refreshWorkerBar();
-  }, 4000);
+  try {
+    const health = await api("/health");
+    document.getElementById("app-version").textContent = `v${health.version}`;
+    await loadPlatforms();
+    await Promise.all([refreshDashboard(), refreshAccounts(), refreshContent(), refreshQueue(), refreshWorkerBar()]);
+    setInterval(() => {
+      refreshDashboard();
+      refreshQueue();
+      refreshWorkerBar();
+    }, 4000);
+  } catch (err) {
+    console.error(err);
+    showBootError(`UI failed to load: ${err.message}. Hard-refresh the page (Ctrl+F5).`);
+  }
 }
 
-init().catch((err) => console.error(err));
+init();

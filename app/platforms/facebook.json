@@ -1,0 +1,19 @@
+{
+  "id": "facebook",
+  "display_name": "Facebook",
+  "region": "global",
+  "home_url": "https://www.facebook.com/",
+  "login_url": "https://www.facebook.com/login",
+  "upload_url": "https://www.facebook.com/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video", "image", "text"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 255 },
+    "caption": { "required": false, "max_length": 63206 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "login"]
+  }
+}

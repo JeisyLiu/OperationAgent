@@ -63,21 +63,43 @@ input, button, select {
   border-radius: 6px;
   padding: .5rem .65rem;
 }
+select {
+  min-width: 240px;
+  max-width: 100%;
+  appearance: auto;
+}
+select option {
+  background: #1a222c;
+  color: #e7ecf1;
+}
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
+button.danger { border-color: var(--bad); color: #ffb4b4; }
+button.danger:hover { background: rgba(255,107,107,.15); }
+
+.hint { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
+.boot-error {
+  background: rgba(255,107,107,.15);
+  border: 1px solid var(--bad);
+  color: #ffb4b4;
+  padding: .75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
 
 .table { display: grid; gap: .5rem; }
 .row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: minmax(140px, 1.2fr) minmax(160px, 1fr) 120px minmax(280px, 1.6fr);
   gap: .5rem;
+  align-items: center;
   padding: .65rem .75rem;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: .9rem;
 }
-.row .actions { display: flex; gap: .35rem; flex-wrap: wrap; }
+.row .actions { display: flex; gap: .35rem; flex-wrap: wrap; justify-content: flex-start; }
 .status-success { color: var(--ok); }
 .status-failed, .status-dead { color: var(--bad); }
 
@@ -106,4 +128,5 @@ pre {
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .row { grid-template-columns: 1fr; }
 }

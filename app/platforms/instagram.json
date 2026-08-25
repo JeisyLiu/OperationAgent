@@ -1,0 +1,19 @@
+{
+  "id": "instagram",
+  "display_name": "Instagram",
+  "region": "global",
+  "home_url": "https://www.instagram.com/",
+  "login_url": "https://www.instagram.com/accounts/login/",
+  "upload_url": "https://www.instagram.com/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video", "image"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 0 },
+    "caption": { "required": true, "max_length": 2200 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "login"]
+  }
+}

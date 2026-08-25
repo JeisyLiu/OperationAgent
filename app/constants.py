@@ -35,12 +35,6 @@ NON_RETRYABLE_FAILURES = {
 
 RETRY_BACKOFF_SECONDS = [60, 300, 900]
 
-PLATFORM_URLS = {
-    "tiktok": "https://www.tiktok.com/",
-    "youtube": "https://www.youtube.com/",
-    "reddit": "https://www.reddit.com/",
-}
-
 
 def utcnow() -> datetime:
     return datetime.utcnow()

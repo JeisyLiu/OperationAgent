@@ -1,0 +1,19 @@
+{
+  "id": "reddit",
+  "display_name": "Reddit",
+  "region": "global",
+  "home_url": "https://www.reddit.com/",
+  "login_url": "https://www.reddit.com/login/",
+  "upload_url": "https://www.reddit.com/submit",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video", "image", "text"],
+  "variant_schema": {
+    "title": { "required": true, "max_length": 300 },
+    "caption": { "required": false, "max_length": 40000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "login"]
+  }
+}

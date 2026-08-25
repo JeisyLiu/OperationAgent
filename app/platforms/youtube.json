@@ -1,0 +1,19 @@
+{
+  "id": "youtube",
+  "display_name": "YouTube",
+  "region": "global",
+  "home_url": "https://www.youtube.com/",
+  "login_url": "https://accounts.google.com/",
+  "upload_url": "https://www.youtube.com/upload",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["video"],
+  "variant_schema": {
+    "title": { "required": true, "max_length": 100 },
+    "caption": { "required": false, "max_length": 5000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["sign in", "login"]
+  }
+}

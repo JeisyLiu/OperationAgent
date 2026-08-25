@@ -11,6 +11,7 @@ from app.api.content import router as content_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.settings import router as settings_router
+from app.api.platforms import router as platforms_router
 from app.api.worker import router as worker_router
 from app.config import APP_VERSION, settings
 from app.scheduler.worker import worker
@@ -43,6 +44,7 @@ app.include_router(settings_router)
 app.include_router(accounts_router)
 app.include_router(content_router)
 app.include_router(jobs_router)
+app.include_router(platforms_router)
 app.include_router(worker_router)
 
 if STATIC_DIR.exists():

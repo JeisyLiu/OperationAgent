@@ -66,3 +66,31 @@ def test_job_create_requires_active_account(client: TestClient):
         assert resp.json()["status"] == "PENDING"
     finally:
         db.close()
+
+
+def test_job_create_rejects_non_publishable_platform(client: TestClient):
+    db = SessionLocal()
+    try:
+        account = account_service.create(db, platform="bilibili", account_name="b1")
+        account_service.mark_active(db, account)
+        asset = content_service.create_asset(db, title="v", media_type="video")
+        content_service.save_upload(db, asset, "demo.mp4", b"data")
+        variant = content_service.create_variant(
+            db,
+            asset_id=asset.id,
+            platform="bilibili",
+            title="t",
+            caption="c",
+        )
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "content_variant_id": variant.id,
+                "account_id": account.id,
+                "scheduled_at": datetime.utcnow().isoformat(),
+            },
+        )
+        assert resp.status_code == 400
+        assert "does not support publishing" in resp.json()["detail"]
+    finally:
+        db.close()
