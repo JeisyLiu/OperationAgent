@@ -65,6 +65,13 @@ async function refreshDashboard() {
 }
 
 let platformCatalog = [];
+let cachedAccounts = [];
+let cachedVariants = [];
+
+function isPublishable(platformId) {
+  const match = platformCatalog.find((p) => p.id === platformId);
+  return Boolean(match && match.publishable);
+}
 
 function platformLabel(platformId) {
   const match = platformCatalog.find((p) => p.id === platformId);
@@ -101,8 +108,8 @@ function showBootError(message) {
 }
 
 async function refreshAccounts() {
-  const accounts = await api("/api/accounts");
-  document.getElementById("accounts-list").innerHTML = accounts
+  cachedAccounts = await api("/api/accounts");
+  document.getElementById("accounts-list").innerHTML = cachedAccounts
     .map(
       (a) => `
       <div class="row">
@@ -110,6 +117,7 @@ async function refreshAccounts() {
         <div>${platformLabel(a.platform)}</div>
         <div>${a.status}</div>
         <div class="actions">
+          <button type="button" data-skill="${a.id}">Edit skill</button>
           <button type="button" data-open="${a.id}">Open profile</button>
           <button type="button" data-active="${a.id}">Mark active</button>
           <button type="button" class="danger" data-delete="${a.id}">Delete</button>
@@ -118,6 +126,11 @@ async function refreshAccounts() {
     )
     .join("") || `<div class="hint">No accounts yet.</div>`;
 
+  renderAccountPicks();
+
+  document.querySelectorAll("[data-skill]").forEach((btn) => {
+    btn.onclick = () => openSkillEditor(Number(btn.dataset.skill));
+  });
   document.querySelectorAll("[data-open]").forEach((btn) => {
     btn.onclick = () => api(`/api/accounts/${btn.dataset.open}/open-profile`, { method: "POST" })
       .then((r) => alert(r.message || "Profile launch requested"))
@@ -142,14 +155,135 @@ async function refreshAccounts() {
   });
 }
 
+function renderAccountPicks() {
+  const container = document.getElementById("generate-account-picks");
+  if (!container) return;
+  const active = cachedAccounts.filter((a) => a.status === "ACTIVE");
+  container.innerHTML = active
+    .map(
+      (a) => `
+      <label>
+        <input type="checkbox" name="generate_account" value="${a.id}" />
+        #${a.id} ${a.account_name} (${platformLabel(a.platform)})
+      </label>`
+    )
+    .join("") || `<span class="hint">No ACTIVE accounts.</span>`;
+}
+
+function openSkillEditor(accountId) {
+  const account = cachedAccounts.find((a) => a.id === accountId);
+  if (!account) return;
+  const skill = account.skill || {};
+  document.getElementById("skill-editor").hidden = false;
+  document.getElementById("skill-account-id").value = account.id;
+  document.getElementById("skill-persona").value = account.persona || "";
+  document.getElementById("skill-tone").value = skill.tone || "";
+  document.getElementById("skill-audience").value = skill.audience || "";
+  document.getElementById("skill-language").value = skill.language || account.language || "";
+  document.getElementById("skill-cta").value = skill.cta || "";
+  document.getElementById("skill-taboos").value = (skill.taboos || []).join(", ");
+  document.getElementById("skill-extra").value = skill.extra_prompt || "";
+}
+
+document.getElementById("skill-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const accountId = Number(document.getElementById("skill-account-id").value);
+  const taboosRaw = document.getElementById("skill-taboos").value;
+  const payload = {
+    persona: document.getElementById("skill-persona").value || null,
+    language: document.getElementById("skill-language").value || null,
+    skill: {
+      tone: document.getElementById("skill-tone").value || null,
+      audience: document.getElementById("skill-audience").value || null,
+      language: document.getElementById("skill-language").value || null,
+      cta: document.getElementById("skill-cta").value || null,
+      taboos: taboosRaw ? taboosRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      extra_prompt: document.getElementById("skill-extra").value || null,
+    },
+  };
+  try {
+    await api(`/api/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    await refreshAccounts();
+    alert("Skill saved.");
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+function renderEnqueueList() {
+  const container = document.getElementById("enqueue-list");
+  if (!container) return;
+  const generated = cachedVariants.filter((v) => v.generated_by === "skill" && v.account_id);
+  container.innerHTML = generated
+    .map((v) => {
+      const publishable = isPublishable(v.platform);
+      return `
+      <label class="row enqueue-row">
+        <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "" : "disabled"} />
+        <div>Variant #${v.id}</div>
+        <div>${platformLabel(v.platform)}</div>
+        <div>${(v.title || v.caption || "").slice(0, 80)}</div>
+        <div>${publishable ? "publishable" : "login only"}</div>
+      </label>`;
+    })
+    .join("") || `<div class="hint">No generated variants yet.</div>`;
+}
+
 async function refreshContent() {
   const assets = await api("/api/content/assets");
-  const variants = await api("/api/content/variants");
+  cachedVariants = await api("/api/content/variants");
   document.getElementById("content-list").innerHTML = [
     ...assets.map((a) => `<div class="row"><div>Asset #${a.id}</div><div>${a.title}</div><div>${a.status}</div></div>`),
-    ...variants.map((v) => `<div class="row"><div>Variant #${v.id}</div><div>${v.platform}</div><div>${v.title || ""}</div></div>`),
+    ...cachedVariants.map((v) => `<div class="row"><div>Variant #${v.id}</div><div>${platformLabel(v.platform)}</div><div>${v.title || ""}</div><div>acct #${v.account_id || "-"}</div></div>`),
   ].join("");
+  renderEnqueueList();
 }
+
+document.getElementById("btn-generate-variants").onclick = async () => {
+  const assetId = Number(document.getElementById("generate-asset-id").value);
+  const accountIds = Array.from(document.querySelectorAll('input[name="generate_account"]:checked')).map(
+    (el) => Number(el.value)
+  );
+  if (!assetId || accountIds.length === 0) {
+    alert("Provide Asset ID and select at least one ACTIVE account.");
+    return;
+  }
+  try {
+    const result = await api(`/api/content/assets/${assetId}/generate-variants`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: accountIds }),
+    });
+    document.getElementById("generate-result").textContent = JSON.stringify(result, null, 2);
+    await refreshContent();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document.getElementById("btn-enqueue-selected").onclick = async () => {
+  const items = Array.from(document.querySelectorAll('input[name="enqueue_variant"]:checked')).map((el) => ({
+    content_variant_id: Number(el.value),
+    account_id: Number(el.dataset.accountId),
+  }));
+  if (items.length === 0) {
+    alert("Select at least one publishable variant.");
+    return;
+  }
+  try {
+    const result = await api("/api/jobs/bulk", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    });
+    alert(`Created ${result.created.length} job(s). Failed: ${result.failed.length}`);
+    if (result.failed.length) {
+      console.log(result.failed);
+    }
+    refreshQueue();
+    refreshDashboard();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
 async function refreshQueue() {
   const jobs = await api("/api/jobs");

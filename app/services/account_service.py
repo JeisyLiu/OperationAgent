@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.constants import AccountStatus
 from app.db.models import Account
+from app.schemas.accounts import AccountSkill
 
 
 class AccountService:
@@ -14,6 +15,31 @@ class AccountService:
         root = settings.data_dir / "profiles"
         root.mkdir(parents=True, exist_ok=True)
         return root
+
+    def parse_skill(self, account: Account) -> AccountSkill | None:
+        if not account.metadata_json:
+            return None
+        try:
+            data = json.loads(account.metadata_json)
+        except json.JSONDecodeError:
+            return None
+        skill_data = data.get("skill")
+        if not skill_data:
+            return None
+        return AccountSkill.model_validate(skill_data)
+
+    def skill_to_metadata(self, skill: AccountSkill | None, existing: Account | None = None) -> str | None:
+        if skill is None and existing is None:
+            return None
+        base: dict = {}
+        if existing and existing.metadata_json:
+            try:
+                base = json.loads(existing.metadata_json)
+            except json.JSONDecodeError:
+                base = {}
+        if skill is not None:
+            base["skill"] = skill.model_dump(exclude_none=True)
+        return json.dumps(base) if base else None
 
     def list_accounts(self, db: Session, platform: str | None = None) -> list[Account]:
         query = db.query(Account).order_by(Account.id.desc())
@@ -33,6 +59,7 @@ class AccountService:
         persona: str | None = None,
         language: str | None = None,
         description: str | None = None,
+        skill: AccountSkill | None = None,
     ) -> Account:
         profile_name = f"{platform}_{uuid.uuid4().hex[:8]}"
         profile_rel = f"profiles/{profile_name}"
@@ -44,8 +71,9 @@ class AccountService:
             account_name=account_name,
             browser_profile=profile_rel,
             persona=persona,
-            language=language,
+            language=language or (skill.language if skill else None),
             description=description,
+            metadata_json=self.skill_to_metadata(skill),
             status=AccountStatus.PENDING_LOGIN.value,
         )
         db.add(account)
@@ -63,6 +91,7 @@ class AccountService:
         language: str | None = None,
         description: str | None = None,
         status: str | None = None,
+        skill: AccountSkill | None = None,
         metadata_json: dict | None = None,
     ) -> Account:
         if account_name is not None:
@@ -75,6 +104,10 @@ class AccountService:
             account.description = description
         if status is not None:
             account.status = status
+        if skill is not None:
+            account.metadata_json = self.skill_to_metadata(skill, account)
+            if skill.language and language is None:
+                account.language = skill.language
         if metadata_json is not None:
             account.metadata_json = json.dumps(metadata_json)
         db.commit()

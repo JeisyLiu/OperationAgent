@@ -34,7 +34,7 @@
 可选后补 Adapter（非 MVP 阻塞）：
 
 - Hermes  
-- OpenClaw  
+- OpenClaw（代码中已预留 `OpenClawAdapter` stub；`AGENT_ADAPTER=openclaw` 可加载但未接线）
 
 ---
 

@@ -123,7 +123,49 @@ pre {
   border-top: 1px solid var(--border);
   font-size: .9rem;
 }
-.status-bar button { padding: .35rem .75rem; }
+.generate-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.15);
+}
+.skill-editor {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.skill-form {
+  display: grid;
+  gap: .75rem;
+}
+.skill-form label { min-width: 100%; }
+.skill-form textarea {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .5rem .65rem;
+  width: 100%;
+}
+.account-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  min-width: 240px;
+}
+.account-picks label {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  min-width: auto;
+}
+.generate-result {
+  margin-top: .75rem;
+  max-height: 180px;
+  overflow: auto;
+}
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }

@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -25,12 +23,27 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 _profile_runtimes: dict[int, PlaywrightRuntime] = {}
 
 
+def _account_response(account) -> AccountResponse:
+    return AccountResponse(
+        id=account.id,
+        platform=account.platform,
+        account_name=account.account_name,
+        browser_profile=account.browser_profile,
+        persona=account.persona,
+        language=account.language,
+        description=account.description,
+        skill=account_service.parse_skill(account),
+        status=account.status,
+        created_at=account.created_at,
+    )
+
+
 @router.get("", response_model=list[AccountResponse])
 def list_accounts(
     platform: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[AccountResponse]:
-    return account_service.list_accounts(db, platform=platform)
+    return [_account_response(a) for a in account_service.list_accounts(db, platform=platform)]
 
 
 @router.post("", response_model=AccountResponse)
@@ -42,13 +55,16 @@ def create_account(payload: AccountCreate, db: Session = Depends(get_db)) -> Acc
     except PlatformDisabledError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return account_service.create(
-        db,
-        platform=payload.platform.lower(),
-        account_name=payload.account_name,
-        persona=payload.persona,
-        language=payload.language,
-        description=payload.description,
+    return _account_response(
+        account_service.create(
+            db,
+            platform=payload.platform.lower(),
+            account_name=payload.account_name,
+            persona=payload.persona,
+            language=payload.language,
+            description=payload.description,
+            skill=payload.skill,
+        )
     )
 
 
@@ -57,7 +73,7 @@ def get_account(account_id: int, db: Session = Depends(get_db)) -> AccountRespon
     account = account_service.get(db, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
-    return account
+    return _account_response(account)
 
 
 @router.patch("/{account_id}", response_model=AccountResponse)
@@ -69,14 +85,17 @@ def patch_account(
     account = account_service.get(db, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
-    return account_service.update(
-        db,
-        account,
-        account_name=payload.account_name,
-        persona=payload.persona,
-        language=payload.language,
-        description=payload.description,
-        status=payload.status,
+    return _account_response(
+        account_service.update(
+            db,
+            account,
+            account_name=payload.account_name,
+            persona=payload.persona,
+            language=payload.language,
+            description=payload.description,
+            status=payload.status,
+            skill=payload.skill,
+        )
     )
 
 
@@ -145,7 +164,7 @@ async def mark_active(account_id: int, db: Session = Depends(get_db)) -> Account
     if runtime is not None:
         await runtime.close()
 
-    return account_service.mark_active(db, account)
+    return _account_response(account_service.mark_active(db, account))
 
 
 @router.post("/{account_id}/check-session", response_model=SessionCheckResponse)

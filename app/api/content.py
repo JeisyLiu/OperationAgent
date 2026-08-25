@@ -8,10 +8,14 @@ from app.db.session import get_db
 from app.schemas.content import (
     AssetCreate,
     AssetResponse,
+    GenerateVariantsRequest,
+    GenerateVariantsResponse,
+    GenerateVariantErrorItem,
     VariantCreate,
     VariantResponse,
     VariantUpdate,
 )
+from app.services.content_generate_service import content_generate_service
 from app.services.content_service import content_service
 
 router = APIRouter(prefix="/api/content", tags=["content"])
@@ -19,6 +23,7 @@ router = APIRouter(prefix="/api/content", tags=["content"])
 
 def _variant_response(variant: ContentVariant) -> VariantResponse:
     hashtags = json.loads(variant.hashtags_json or "[]")
+    extra = json.loads(variant.extra_json or "{}")
     return VariantResponse(
         id=variant.id,
         asset_id=variant.asset_id,
@@ -28,6 +33,8 @@ def _variant_response(variant: ContentVariant) -> VariantResponse:
         hashtags=hashtags,
         media_path=variant.media_path,
         status=variant.status,
+        account_id=extra.get("account_id"),
+        generated_by=extra.get("generated_by"),
     )
 
 
@@ -59,6 +66,28 @@ async def upload_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
     data = await file.read()
     return content_service.save_upload(db, asset, file.filename or "upload.bin", data)
+
+
+@router.post("/assets/{asset_id}/generate-variants", response_model=GenerateVariantsResponse)
+def generate_variants(
+    asset_id: int,
+    payload: GenerateVariantsRequest,
+    db: Session = Depends(get_db),
+) -> GenerateVariantsResponse:
+    try:
+        result = content_generate_service.generate_for_accounts(
+            db,
+            asset_id=asset_id,
+            account_ids=payload.account_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GenerateVariantsResponse(
+        variants=[_variant_response(v) for v in result.variants],
+        errors=[
+            GenerateVariantErrorItem(account_id=e.account_id, detail=e.detail) for e in result.errors
+        ],
+    )
 
 
 @router.get("/variants", response_model=list[VariantResponse])

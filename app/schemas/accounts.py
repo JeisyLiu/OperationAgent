@@ -3,12 +3,24 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class AccountSkill(BaseModel):
+    tone: str | None = None
+    audience: str | None = None
+    language: str | None = None
+    taboos: list[str] = Field(default_factory=list)
+    cta: str | None = None
+    topics: list[str] = Field(default_factory=list)
+    hashtag_style: str | None = None
+    extra_prompt: str | None = None
+
+
 class AccountCreate(BaseModel):
     platform: str
     account_name: str
     persona: str | None = None
     language: str | None = None
     description: str | None = None
+    skill: AccountSkill | None = None
 
 
 class AccountUpdate(BaseModel):
@@ -17,6 +29,7 @@ class AccountUpdate(BaseModel):
     language: str | None = None
     description: str | None = None
     status: str | None = None
+    skill: AccountSkill | None = None
 
 
 class AccountResponse(BaseModel):
@@ -27,6 +40,7 @@ class AccountResponse(BaseModel):
     persona: str | None = None
     language: str | None = None
     description: str | None = None
+    skill: AccountSkill | None = None
     status: str
     created_at: datetime
 

@@ -1966,7 +1966,7 @@ UI
 
 仅作 backlog，不进入当前 Sprint：
 
-1. AI 根据 Asset 生成各平台 Variant  
+1. AI 根据 Asset 生成各平台 Variant — **部分落地**：Account Skill + `generate-variants` + bulk 入队（OpenClaw 仍 backlog）
 2. AI 建议发布时间写入 Queue  
 3. `read_comments` / `reply_comment`  
 4. 人工确认后自动回复  

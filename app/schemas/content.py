@@ -50,5 +50,21 @@ class VariantResponse(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
     media_path: str | None = None
     status: str
+    account_id: int | None = None
+    generated_by: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class GenerateVariantsRequest(BaseModel):
+    account_ids: list[int]
+
+
+class GenerateVariantErrorItem(BaseModel):
+    account_id: int
+    detail: str
+
+
+class GenerateVariantsResponse(BaseModel):
+    variants: list[VariantResponse]
+    errors: list[GenerateVariantErrorItem] = Field(default_factory=list)

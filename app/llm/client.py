@@ -3,7 +3,12 @@ from openai import OpenAI
 from app.services.settings_service import AiSettingsSecrets
 
 
-def chat(messages: list[dict[str, str]], secrets: AiSettingsSecrets) -> str:
+def chat(
+    messages: list[dict[str, str]],
+    secrets: AiSettingsSecrets,
+    *,
+    max_tokens: int = 256,
+) -> str:
     if not secrets.api_key:
         raise ValueError("API key is not configured")
 
@@ -16,7 +21,7 @@ def chat(messages: list[dict[str, str]], secrets: AiSettingsSecrets) -> str:
     response = client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=256,
+        max_tokens=max_tokens,
     )
     content = response.choices[0].message.content
     return content or ""

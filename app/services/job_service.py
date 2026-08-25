@@ -39,6 +39,10 @@ class JobService:
             raise ValueError("Account not found")
         if account.status != "ACTIVE":
             raise ValueError("Account must be ACTIVE before scheduling jobs")
+        if account.platform != variant.platform:
+            raise ValueError(
+                f"Account platform '{account.platform}' does not match variant platform '{variant.platform}'"
+            )
 
         try:
             require_platform(variant.platform)
@@ -63,6 +67,37 @@ class JobService:
         db.commit()
         db.refresh(job)
         return job
+
+    def create_bulk(
+        self,
+        db: Session,
+        items: list[dict],
+    ) -> tuple[list[PublishJob], list[dict]]:
+        created: list[PublishJob] = []
+        failed: list[dict] = []
+        for item in items:
+            variant_id = item["content_variant_id"]
+            account_id = item["account_id"]
+            scheduled_at = item.get("scheduled_at") or utcnow()
+            max_retries = item.get("max_retries", 3)
+            try:
+                job = self.create(
+                    db,
+                    content_variant_id=variant_id,
+                    account_id=account_id,
+                    scheduled_at=scheduled_at,
+                    max_retries=max_retries,
+                )
+                created.append(job)
+            except ValueError as exc:
+                failed.append(
+                    {
+                        "content_variant_id": variant_id,
+                        "account_id": account_id,
+                        "detail": str(exc),
+                    }
+                )
+        return created, failed
 
     def cancel(self, db: Session, job: PublishJob) -> PublishJob:
         if job.status in {JobStatus.SUCCESS.value, JobStatus.DEAD.value, JobStatus.CANCELLED.value}:

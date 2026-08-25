@@ -3,7 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.constants import utcnow
 from app.db.session import get_db
-from app.schemas.jobs import ExecutionLogResponse, JobCreate, JobResponse
+from app.schemas.jobs import (
+    BulkJobCreate,
+    BulkJobResponse,
+    BulkJobResultItem,
+    ExecutionLogResponse,
+    JobCreate,
+    JobResponse,
+)
 from app.services.job_service import job_service
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -27,6 +34,24 @@ def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> JobResponse
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/bulk", response_model=BulkJobResponse)
+def create_jobs_bulk(payload: BulkJobCreate, db: Session = Depends(get_db)) -> BulkJobResponse:
+    items = [
+        {
+            "content_variant_id": item.content_variant_id,
+            "account_id": item.account_id,
+            "scheduled_at": item.scheduled_at or utcnow(),
+            "max_retries": item.max_retries,
+        }
+        for item in payload.items
+    ]
+    created, failed = job_service.create_bulk(db, items)
+    return BulkJobResponse(
+        created=created,
+        failed=[BulkJobResultItem(**f) for f in failed],
+    )
 
 
 @router.get("/{job_id}", response_model=JobResponse)

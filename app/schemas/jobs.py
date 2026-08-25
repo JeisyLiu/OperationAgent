@@ -10,6 +10,23 @@ class JobCreate(BaseModel):
     max_retries: int = 3
 
 
+class BulkJobItem(BaseModel):
+    content_variant_id: int
+    account_id: int
+    scheduled_at: datetime | None = None
+    max_retries: int = 3
+
+
+class BulkJobCreate(BaseModel):
+    items: list[BulkJobItem]
+
+
+class BulkJobResultItem(BaseModel):
+    content_variant_id: int
+    account_id: int
+    detail: str
+
+
 class JobResponse(BaseModel):
     id: int
     content_variant_id: int
@@ -26,6 +43,11 @@ class JobResponse(BaseModel):
     completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BulkJobResponse(BaseModel):
+    created: list[JobResponse]
+    failed: list[BulkJobResultItem] = Field(default_factory=list)
 
 
 class ExecutionLogResponse(BaseModel):

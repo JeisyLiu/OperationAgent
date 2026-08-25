@@ -35,9 +35,16 @@ AGENT_ADAPTER=browser_use
 
 Use `AGENT_ADAPTER=mock` for queue testing without a real browser agent.
 
-## First-time publish (no code)
+Reserved adapters (not wired in MVP): `openclaw` (stub only; returns a clear failure if selected).
 
-1. **Settings** — enter AI provider, model, and API key → **Test connection**.
+## Account Skill + multi-account workflow
+
+1. **Accounts** — configure Skill (tone, audience, taboos, extra prompt) per account
+2. **Content** — upload Asset → select ACTIVE accounts → **Generate variants**
+3. Review generated variants → **Enqueue selected** (publishable platforms only, e.g. TikTok)
+4. Worker runs jobs automatically; non-publishable platforms can still generate/login-only variants
+
+## First-time publish (no code)
 2. **Accounts** — add a TikTok account → **Open profile** → log in manually (complete any captcha here) → **Mark active**.
 3. **Content** — upload a video → create a TikTok variant with title/caption.
 4. **Queue** — schedule a job with the variant ID and active account ID.
@@ -70,8 +77,8 @@ Expected: `{"status":"ok","version":"0.2.0"}`
 |------|-----------|
 | Settings | `GET/PUT /api/settings/ai`, `POST /api/settings/ai/test` |
 | Accounts | `GET/POST /api/accounts`, `POST .../open-profile`, `.../mark-active` |
-| Content | `GET/POST /api/content/assets`, upload, variants |
-| Jobs | `GET/POST /api/jobs`, cancel/retry/logs |
+| Content | `GET/POST /api/content/assets`, upload, variants, `POST .../generate-variants` |
+| Jobs | `GET/POST /api/jobs`, `POST /api/jobs/bulk`, cancel/retry/logs |
 | Worker | `GET /api/worker/status`, pause/stop |
 | Platforms | `GET /api/platforms` |
 
