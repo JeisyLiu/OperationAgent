@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.constants import AccountStatus
 from app.db.models import Account
+from app.platforms import get_platform_default_persona, get_platform_default_skill
 from app.schemas.accounts import AccountSkill
 
 
@@ -15,6 +16,37 @@ class AccountService:
         root = settings.data_dir / "profiles"
         root.mkdir(parents=True, exist_ok=True)
         return root
+
+    def _merge_skills(self, override: AccountSkill | None, platform_id: str) -> AccountSkill | None:
+        defaults_raw = get_platform_default_skill(platform_id)
+        if not defaults_raw and override is None:
+            return None
+        defaults = AccountSkill.model_validate(defaults_raw or {})
+        if override is None:
+            return defaults if defaults_raw else None
+        return AccountSkill(
+            tone=override.tone or defaults.tone,
+            audience=override.audience or defaults.audience,
+            language=override.language or defaults.language,
+            taboos=override.taboos if override.taboos else defaults.taboos,
+            cta=override.cta or defaults.cta,
+            topics=override.topics if override.topics else defaults.topics,
+            hashtag_style=override.hashtag_style or defaults.hashtag_style,
+            extra_prompt=override.extra_prompt or defaults.extra_prompt,
+        )
+
+    def resolve_skill(self, account: Account) -> AccountSkill | None:
+        merged = self._merge_skills(self.parse_skill(account), account.platform)
+        if merged is None:
+            return None
+        if not merged.language and account.language:
+            return merged.model_copy(update={"language": account.language})
+        return merged
+
+    def resolve_persona(self, account: Account) -> str:
+        if account.persona:
+            return account.persona
+        return get_platform_default_persona(account.platform) or ""
 
     def parse_skill(self, account: Account) -> AccountSkill | None:
         if not account.metadata_json:
@@ -65,6 +97,9 @@ class AccountService:
         profile_rel = f"profiles/{profile_name}"
         profile_path = self._profiles_root() / profile_name
         profile_path.mkdir(parents=True, exist_ok=True)
+
+        skill = self._merge_skills(skill, platform)
+        persona = persona or get_platform_default_persona(platform)
 
         account = Account(
             platform=platform,

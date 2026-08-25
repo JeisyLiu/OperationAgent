@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from app.platforms import is_publishable, list_platforms
+from app.schemas.accounts import AccountSkill
 
 
 class PlatformResponse(BaseModel):
@@ -11,9 +12,14 @@ class PlatformResponse(BaseModel):
     channel: str | None
     publishable: bool
     media_types: list[str]
+    default_persona: str | None = None
+    default_skill: AccountSkill | None = None
 
 
 def to_platform_response(platform) -> PlatformResponse:
+    default_skill = None
+    if platform.default_skill:
+        default_skill = AccountSkill.model_validate(platform.default_skill)
     return PlatformResponse(
         id=platform.id,
         display_name=platform.display_name,
@@ -22,4 +28,6 @@ def to_platform_response(platform) -> PlatformResponse:
         channel=platform.channel,
         publishable=is_publishable(platform.id),
         media_types=platform.media_types,
+        default_persona=platform.default_persona,
+        default_skill=default_skill,
     )

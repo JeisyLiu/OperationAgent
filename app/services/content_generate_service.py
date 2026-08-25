@@ -97,14 +97,14 @@ class ContentGenerateService:
                 continue
 
             platform = get_platform(account.platform)
-            skill = account_service.parse_skill(account) or AccountSkill()
+            skill = account_service.resolve_skill(account) or AccountSkill()
             skill_json = skill.model_dump(exclude_none=True)
             prompt = template.format(
                 asset_title=asset.title,
                 base_caption=asset.base_caption or "",
                 account_name=account.account_name,
                 platform=account.platform,
-                persona=account.persona or "",
+                persona=account_service.resolve_persona(account),
                 skill_json=json.dumps(skill_json, ensure_ascii=False),
                 variant_schema=json.dumps(platform.variant_schema if platform else {}, ensure_ascii=False),
             )

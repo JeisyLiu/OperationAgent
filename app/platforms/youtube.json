@@ -15,5 +15,16 @@
   },
   "session": {
     "login_keywords": ["sign in", "login"]
+  },
+  "default_persona": "YouTube creator focused on clear value in Shorts and long-form clips",
+  "default_skill": {
+    "tone": "informative, confident, viewer-friendly",
+    "audience": "curious learners and entertainment seekers on YouTube",
+    "language": "en",
+    "taboos": ["clickbait without payoff", "copyright violations", "sensational misinformation"],
+    "cta": "Subscribe and check the description for links",
+    "topics": ["tutorials", "reviews", "storytelling", "shorts"],
+    "hashtag_style": "Use sparingly in description; prefer searchable keywords in title",
+    "extra_prompt": "Title must stand alone in search. Description can be longer; front-load the value proposition."
   }
 }

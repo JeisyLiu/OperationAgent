@@ -51,6 +51,21 @@ def test_platforms_api(client: TestClient):
     assert any(p["id"] == "tiktok" for p in data)
     tiktok = next(p for p in data if p["id"] == "tiktok")
     assert tiktok["publishable"] is True
+    assert tiktok["default_skill"]["tone"]
+    assert tiktok["default_persona"]
+
+
+def test_account_create_applies_platform_default_skill(client: TestClient):
+    create = client.post(
+        "/api/accounts",
+        json={"platform": "bilibili", "account_name": "bili-default"},
+    )
+    assert create.status_code == 200
+    data = create.json()
+    assert data["persona"]
+    assert data["skill"]["tone"]
+    assert data["skill"]["language"] == "zh-CN"
+    assert data["language"] == "zh-CN"
 
 
 def test_account_create_and_list(client: TestClient):

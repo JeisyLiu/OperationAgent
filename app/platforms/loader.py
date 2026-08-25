@@ -20,6 +20,8 @@ class PlatformDef:
     media_types: list[str] = field(default_factory=list)
     variant_schema: dict[str, Any] = field(default_factory=dict)
     session: dict[str, Any] = field(default_factory=dict)
+    default_persona: str | None = None
+    default_skill: dict[str, Any] = field(default_factory=dict)
 
     @property
     def open_url(self) -> str:
@@ -47,6 +49,8 @@ def _parse_platform(data: dict[str, Any]) -> PlatformDef:
         media_types=list(data.get("media_types", [])),
         variant_schema=dict(data.get("variant_schema", {})),
         session=dict(data.get("session", {})),
+        default_persona=data.get("default_persona"),
+        default_skill=dict(data.get("default_skill", {})),
     )
 
 
@@ -102,3 +106,17 @@ def is_publishable(platform_id: str) -> bool:
 
 def get_open_url(platform_id: str) -> str:
     return require_platform(platform_id).open_url
+
+
+def get_platform_default_skill(platform_id: str) -> dict[str, Any]:
+    platform = get_platform(platform_id)
+    if platform is None:
+        return {}
+    return dict(platform.default_skill)
+
+
+def get_platform_default_persona(platform_id: str) -> str | None:
+    platform = get_platform(platform_id)
+    if platform is None:
+        return None
+    return platform.default_persona

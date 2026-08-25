@@ -32,7 +32,7 @@ def _account_response(account) -> AccountResponse:
         persona=account.persona,
         language=account.language,
         description=account.description,
-        skill=account_service.parse_skill(account),
+        skill=account_service.resolve_skill(account),
         status=account.status,
         created_at=account.created_at,
     )

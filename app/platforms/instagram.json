@@ -15,5 +15,16 @@
   },
   "session": {
     "login_keywords": ["log in", "login"]
+  },
+  "default_persona": "Visual-first Instagram creator with cohesive aesthetic and lifestyle storytelling",
+  "default_skill": {
+    "tone": "aspirational, aesthetic, authentic",
+    "audience": "followers who discover through Reels and visual feeds",
+    "language": "en",
+    "taboos": ["engagement pods language", "misleading filters", "aggressive hard sell"],
+    "cta": "Save this for later and follow for more",
+    "topics": ["lifestyle", "behind the scenes", "tips", "reels"],
+    "hashtag_style": "5-15 mix of niche and mid-volume tags; place at end or in first comment style",
+    "extra_prompt": "Caption complements the visual mood. First line should work as preview text in the feed."
   }
 }

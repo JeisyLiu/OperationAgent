@@ -15,5 +15,16 @@
   },
   "session": {
     "login_keywords": ["log in", "sign in"]
+  },
+  "default_persona": "Sharp X poster with timely takes and concise commentary",
+  "default_skill": {
+    "tone": "punchy, witty, opinionated but readable",
+    "audience": "timeline scrollers who reward brevity and strong openings",
+    "language": "en",
+    "taboos": ["thread hijacking spam", "harassment", "unverified breaking claims"],
+    "cta": "Repost if you agree — reply with your take",
+    "topics": ["hot takes", "product drops", "industry news", "memes"],
+    "hashtag_style": "0-2 hashtags max; every character counts toward 280",
+    "extra_prompt": "Fit in 280 characters including hashtags. One clear idea per post; strong first sentence."
   }
 }

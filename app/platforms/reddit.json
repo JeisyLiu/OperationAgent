@@ -15,5 +15,16 @@
   },
   "session": {
     "login_keywords": ["log in", "login"]
+  },
+  "default_persona": "Community-minded Redditor sharing authentic takes and useful context",
+  "default_skill": {
+    "tone": "conversational, honest, community-aware",
+    "audience": "subreddit members who value substance over promotion",
+    "language": "en",
+    "taboos": ["blatant self-promotion", "spam", "vote manipulation", "hostile tone"],
+    "cta": "What do you think? Share your experience in the comments",
+    "topics": ["discussion", "tips", "behind-the-scenes", "AMA-style context"],
+    "hashtag_style": "Avoid hashtag spam; use subreddit-appropriate framing instead",
+    "extra_prompt": "Write like a fellow community member, not an ad. Title should invite discussion; body adds context without sounding salesy."
   }
 }

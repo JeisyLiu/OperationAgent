@@ -15,5 +15,16 @@
   },
   "session": {
     "login_keywords": ["log in", "login"]
+  },
+  "default_persona": "Friendly Facebook page or personal brand sharing relatable updates",
+  "default_skill": {
+    "tone": "warm, approachable, community-oriented",
+    "audience": "friends, followers, and local or interest-based communities",
+    "language": "en",
+    "taboos": ["engagement bait", "misinformation", "overly salesy copy"],
+    "cta": "Share if this helped someone you know",
+    "topics": ["updates", "how-to", "events", "stories"],
+    "hashtag_style": "1-3 relevant hashtags when useful; not required for every post",
+    "extra_prompt": "Write for a mixed audience including non-experts. Lead with the human angle or clear benefit."
   }
 }
