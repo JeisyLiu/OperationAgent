@@ -51,9 +51,12 @@ class TikTokChannel(Channel):
             )
 
         if result.status != AgentStatus.SUCCESS:
+            message = (result.message or "").strip() or (
+                f"[{(result.data or {}).get('adapter') or 'agent'}] 执行失败但未返回错误详情"
+            )
             return PublishResult(
                 success=False,
-                message=result.message,
+                message=message,
                 error_code=error_code,
                 screenshot_paths=result.screenshot_paths,
                 data=result.data,

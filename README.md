@@ -30,7 +30,7 @@ Open **http://127.0.0.1:8000/** for the local UI.
 
 ```text
 APP_DATA_DIR=./data
-AGENT_ADAPTER=browser_use
+AGENT_ADAPTER=chrome_devtools
 CHROME_DEVTOOLS_URL=http://127.0.0.1:9222
 ```
 
@@ -40,14 +40,15 @@ Use `AGENT_ADAPTER=mock` for queue testing without a real browser agent.
 
 | `AGENT_ADAPTER` | When to use |
 |-----------------|-------------|
-| `browser_use` | Default; autonomous browser-use + persistent profile |
+| `chrome_devtools` | **Default**; attach to your Chrome (`--remote-debugging-port=9222`) |
+| `browser_use` | Autonomous browser-use + persistent profile |
 | `stagehand` | Observe-act-verify tool loop; more deterministic |
-| `chrome_devtools` | Attach to your daily Chrome (`--remote-debugging-port=9222`) |
 | `openclaw` | External OpenClaw CLI/HTTP gateway |
 | `mock` | Tests / queue dry-run |
 
+Infra failure degrade chain: `browser_use` → `stagehand` → `chrome_devtools` (logged as Step `fallback`).
 Platforms may set `preferred_adapter` in catalog (e.g. RedNote → `chrome_devtools`).
-
+On Windows, avoid `uvicorn --reload` when publishing — Playwright needs a Proactor event loop.
 ## Account Skill + multi-account workflow
 
 1. **Accounts** — configure Skill (tone, audience, taboos, extra prompt) per account

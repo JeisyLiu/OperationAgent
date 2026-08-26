@@ -3,12 +3,13 @@ import json
 import logging
 from datetime import timedelta
 
-from app.agent.base import AgentStatus
+from app.agent.errors import ensure_failure_message
 from app.agent.factory import (
     adapter_name_for_platform,
     create_agent_adapter,
     default_adapter_name,
-    resolve_adapter_for_platform,
+    is_infra_failure,
+    next_fallback_adapter,
 )
 from app.channels.base import PublishContext
 from app.channels.registry import get_channel
@@ -163,8 +164,9 @@ class SchedulerWorker:
             prompt = job_service.build_task_prompt(db, job)
             execution_dir = job_service.execution_dir(job.id)
             channel = get_channel(job.platform)
-            adapter = resolve_adapter_for_platform(job.platform)
-            self._current_adapter_name = adapter_name_for_platform(job.platform)
+            adapter_name = adapter_name_for_platform(job.platform)
+            adapter = create_agent_adapter(adapter_name)
+            self._current_adapter_name = adapter_name
             on_step = job_service.build_step_callback(db, job.id)
             ctx = PublishContext(
                 db=db,
@@ -187,6 +189,38 @@ class SchedulerWorker:
             )
             try:
                 result = await channel.publish(ctx)
+                # Degrade chain: browser_use → stagehand → chrome_devtools on infra failures
+                while not result.success and is_infra_failure(result.message, result.error_code):
+                    next_name = next_fallback_adapter(adapter_name)
+                    if next_name is None:
+                        break
+                    cause = ensure_failure_message(adapter_name, result.message)
+                    await adapter.stop()
+                    job_service.add_log(
+                        db,
+                        job_id=job.id,
+                        step="fallback",
+                        message=(
+                            f"执行层降级：{adapter_name} → {next_name}。"
+                            f"上一层失败原因：{cause}"
+                        ),
+                        status=StepStatus.FAILED.value,
+                        tool_name=adapter_name,
+                        payload_json=json.dumps(
+                            {
+                                "from": adapter_name,
+                                "to": next_name,
+                                "error_code": result.error_code,
+                                "message": cause,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                    adapter_name = next_name
+                    adapter = create_agent_adapter(adapter_name)
+                    self._current_adapter_name = adapter_name
+                    ctx.adapter = adapter
+                    result = await channel.publish(ctx)
             finally:
                 await adapter.stop()
                 self._adapter = create_agent_adapter()
@@ -214,6 +248,9 @@ class SchedulerWorker:
                     tool_name="channel",
                 )
             elif result.error_code in NON_RETRYABLE_FAILURES:
+                fail_message = ensure_failure_message(
+                    self._current_adapter_name or adapter_name, result.message
+                )
                 action_url = f"/api/accounts/{job.account_id}/open-profile"
                 guidance = (
                     "请在浏览器中完成登录或验证码验证，然后点击「我已完成，继续」重新排队执行。"
@@ -221,7 +258,7 @@ class SchedulerWorker:
                 job_service.mark_waiting_human(
                     db,
                     job,
-                    result.message,
+                    fail_message,
                     error_code=result.error_code or FailureCode.LOGIN_REQUIRED.value,
                     action_url=action_url,
                     guidance=guidance,
@@ -230,7 +267,7 @@ class SchedulerWorker:
                     db,
                     job_id=job.id,
                     step="waiting_human",
-                    message=result.message,
+                    message=fail_message,
                     status=StepStatus.WAITING_HUMAN.value,
                     tool_name="channel",
                     payload_json=json.dumps(
@@ -244,14 +281,25 @@ class SchedulerWorker:
                     ),
                 )
             else:
-                job_service.mark_failed(db, job, result.message, error_code=result.error_code)
+                fail_message = ensure_failure_message(
+                    self._current_adapter_name or adapter_name, result.message
+                )
+                job_service.mark_failed(db, job, fail_message, error_code=result.error_code)
                 job_service.add_log(
                     db,
                     job_id=job.id,
                     step="failed",
-                    message=result.message,
+                    message=fail_message,
                     status=StepStatus.FAILED.value,
                     tool_name="channel",
+                    payload_json=json.dumps(
+                        {
+                            "error_code": result.error_code,
+                            "adapter": adapter_name,
+                            "message": fail_message,
+                        },
+                        ensure_ascii=False,
+                    ),
                 )
         finally:
             self._current_job_id = None

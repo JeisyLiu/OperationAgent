@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from app.agent.base import AgentAdapter, AgentResult, AgentStatus, AgentTask
+from app.agent.errors import format_adapter_error
 from app.agent.tool_loop import run_tool_loop
 from app.constants import classify_failure
 from app.platforms import require_platform
@@ -58,7 +59,7 @@ class StagehandAdapter(AgentAdapter):
         except Exception as exc:
             logger.exception("StagehandAdapter failed for job %s", task.job_id)
             self._status = AgentStatus.FAILED
-            message = str(exc)
+            message = format_adapter_error("stagehand", exc)
             return AgentResult(
                 status=AgentStatus.FAILED,
                 message=message,

@@ -68,6 +68,14 @@ def run_migrations() -> None:
 def _migrate_ai_settings_to_llm_models() -> None:
     from app.db.models import AiSettings, LlmModel
 
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    if "ai_settings" not in table_names:
+        logger.info("Migration: ai_settings table absent, skip legacy LLM copy")
+        return
+    if "llm_models" not in table_names:
+        return
+
     db = SessionLocal()
     try:
         if db.query(LlmModel).count() > 0:

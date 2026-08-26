@@ -113,7 +113,7 @@
 
       <section id="view-content" class="view">
         <h2>Publish Task</h2>
-        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue. Execution layer: browser_use (default) | stagehand | chrome_devtools. RedNote prefers chrome_devtools via platform catalog.</p>
+        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue. Default execution: chrome_devtools. Infra fallback chain: browser_use → stagehand → chrome_devtools. Start Chrome with --remote-debugging-port=9222 before publish.</p>
 
         <div class="wizard-steps">
           <button type="button" class="wizard-step active" data-wizard-step="1">1. Mother content</button>

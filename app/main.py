@@ -1,6 +1,13 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Windows: Playwright needs ProactorEventLoop for subprocess spawn.
+if sys.platform == "win32":
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -28,7 +35,11 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.db.models import Base
+    from app.db.session import engine
+
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    Base.metadata.create_all(bind=engine)
     run_migrations()
     await worker.start()
     yield

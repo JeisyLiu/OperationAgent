@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from app.agent.base import AgentAdapter, AgentResult, AgentStatus, AgentTask
+from app.agent.errors import format_adapter_error
 from app.constants import classify_failure
 from app.platforms import require_platform
 from app.db.session import SessionLocal
@@ -66,12 +67,12 @@ class BrowserUseAdapter(AgentAdapter):
         except Exception as exc:
             logger.exception("BrowserUseAdapter failed for job %s", task.job_id)
             self._status = AgentStatus.FAILED
-            message = str(exc)
+            message = format_adapter_error("browser_use", exc)
             return AgentResult(
                 status=AgentStatus.FAILED,
                 message=message,
                 screenshot_paths=screenshots,
-                data={"error_code": classify_failure(message)},
+                data={"error_code": classify_failure(message), "adapter": "browser_use"},
             )
         finally:
             await self._runtime.close()

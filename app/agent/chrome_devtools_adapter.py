@@ -4,6 +4,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 from app.agent.base import AgentAdapter, AgentResult, AgentStatus, AgentTask
+from app.agent.errors import format_adapter_error
 from app.agent.tool_loop import run_tool_loop
 from app.config import settings
 from app.constants import classify_failure
@@ -59,12 +60,7 @@ class ChromeDevToolsAdapter(AgentAdapter):
         except Exception as exc:
             logger.exception("ChromeDevToolsAdapter failed for job %s", task.job_id)
             self._status = AgentStatus.FAILED
-            message = str(exc)
-            if "connect" in message.lower() or "9222" in message:
-                message = (
-                    f"{message}. Start Chrome with --remote-debugging-port=9222 "
-                    f"and set CHROME_DEVTOOLS_URL={settings.chrome_devtools_url}"
-                )
+            message = format_adapter_error("chrome_devtools", exc)
             return AgentResult(
                 status=AgentStatus.FAILED,
                 message=message,
