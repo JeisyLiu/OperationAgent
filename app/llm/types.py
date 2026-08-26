@@ -18,6 +18,19 @@ class BatchItem:
 
 
 @dataclass
+class TokenUsage:
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+@dataclass
+class ChatResult:
+    text: str
+    usage: TokenUsage | None = None
+
+
+@dataclass
 class BatchResult:
     key: Any
     ok: bool

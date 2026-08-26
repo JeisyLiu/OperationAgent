@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 
 class AgentStatus(StrEnum):
@@ -13,6 +15,21 @@ class AgentStatus(StrEnum):
 
 
 @dataclass
+class StepEvent:
+    step: int
+    phase: str
+    tool_name: str | None = None
+    status: str = "RUNNING"
+    message: str | None = None
+    duration_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    screenshot_path: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class AgentTask:
     job_id: int
     platform: str
@@ -21,6 +38,7 @@ class AgentTask:
     media_path: str | None = None
     execution_dir: str | None = None
     metadata: dict = field(default_factory=dict)
+    on_step: Callable[[StepEvent], None] | None = None
 
 
 @dataclass

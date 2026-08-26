@@ -56,6 +56,28 @@ class ExecutionLogResponse(BaseModel):
     step: str
     message: str | None = None
     screenshot_path: str | None = None
+    tool_name: str | None = None
+    status: str | None = None
+    duration_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    payload_json: str | None = None
+    started_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobDetailTotals(BaseModel):
+    duration_ms: int = 0
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+class JobDetailResponse(BaseModel):
+    job: JobResponse
+    steps: list[ExecutionLogResponse]
+    totals: JobDetailTotals
+    account_id: int

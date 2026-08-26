@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.agent.base import AgentAdapter
+from app.agent.base import AgentAdapter, StepEvent
 from app.db.models import Account, ContentVariant, PublishJob
 
 
@@ -17,6 +18,7 @@ class PublishContext:
     adapter: AgentAdapter
     execution_dir: Path
     prompt: str
+    on_step: Callable[[StepEvent], None] | None = None
 
 
 @dataclass

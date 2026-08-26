@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.db.session import SessionLocal
 from app.llm import pool
-from app.llm.types import BatchItem, BatchResult
+from app.llm.types import BatchItem, BatchResult, ChatResult, TokenUsage
 from app.services.llm_model_service import LlmModelConfig, llm_model_service
 
 logger = logging.getLogger(__name__)
@@ -33,21 +33,21 @@ class LlmGateway:
         messages: list[dict[str, str]],
         *,
         max_tokens: int,
-    ) -> str:
+    ) -> ChatResult:
         if not config.api_key:
             raise ValueError(f"Model '{config.alias}' has no API key")
         adapter = pool.get_adapter(config.provider)
         with pool.acquire(config):
             return adapter.chat(messages, config, max_tokens=max_tokens)
 
-    def chat(
+    def chat_with_usage(
         self,
         messages: list[dict[str, str]],
         *,
         model_id: int | None = None,
         max_tokens: int = 256,
         failover: bool = True,
-    ) -> str:
+    ) -> ChatResult:
         if model_id is not None:
             config = self._load_candidates(model_id)[0]
             return self._chat_with_config(config, messages, max_tokens=max_tokens)
@@ -59,7 +59,7 @@ class LlmGateway:
         last_error: Exception | None = None
         for index, config in enumerate(configs):
             try:
-                text = self._chat_with_config(config, messages, max_tokens=max_tokens)
+                result = self._chat_with_config(config, messages, max_tokens=max_tokens)
                 if index > 0:
                     logger.warning(
                         "LLM failover succeeded with model id=%s alias=%s provider=%s",
@@ -67,7 +67,7 @@ class LlmGateway:
                         config.alias,
                         config.provider,
                     )
-                return text
+                return result
             except Exception as exc:
                 last_error = exc
                 logger.warning(
@@ -80,6 +80,21 @@ class LlmGateway:
                 )
                 continue
         raise RuntimeError(f"All LLM models failed: {last_error}")
+
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model_id: int | None = None,
+        max_tokens: int = 256,
+        failover: bool = True,
+    ) -> str:
+        return self.chat_with_usage(
+            messages,
+            model_id=model_id,
+            max_tokens=max_tokens,
+            failover=failover,
+        ).text
 
     def chat_single(
         self,

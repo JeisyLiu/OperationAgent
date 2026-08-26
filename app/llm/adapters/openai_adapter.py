@@ -1,5 +1,6 @@
 from openai import OpenAI
 
+from app.llm.types import ChatResult, TokenUsage
 from app.services.llm_model_service import LlmModelConfig
 
 
@@ -24,7 +25,7 @@ class OpenAIAdapter:
         config: LlmModelConfig,
         *,
         max_tokens: int = 256,
-    ) -> str:
+    ) -> ChatResult:
         if not config.api_key:
             raise ValueError("API key is not configured")
         client = self.get_client(config)
@@ -36,4 +37,11 @@ class OpenAIAdapter:
             timeout=config.timeout_sec,
         )
         content = response.choices[0].message.content
-        return content or ""
+        usage = None
+        if response.usage is not None:
+            usage = TokenUsage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+            )
+        return ChatResult(text=content or "", usage=usage)

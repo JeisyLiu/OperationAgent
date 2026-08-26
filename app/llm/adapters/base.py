@@ -1,5 +1,7 @@
 from typing import Protocol
 
+from app.llm.types import ChatResult, TokenUsage
+
 from app.services.llm_model_service import LlmModelConfig
 
 
@@ -10,4 +12,4 @@ class LlmAdapter(Protocol):
         config: LlmModelConfig,
         *,
         max_tokens: int = 256,
-    ) -> str: ...
+    ) -> ChatResult: ...

@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 from dashscope import Generation
 
+from app.llm.types import ChatResult, TokenUsage
 from app.services.llm_model_service import LlmModelConfig
 
 
@@ -12,7 +13,7 @@ class QwenAdapter:
         config: LlmModelConfig,
         *,
         max_tokens: int = 256,
-    ) -> str:
+    ) -> ChatResult:
         if not config.api_key:
             raise ValueError("API key is not configured")
         model = config.model or "qwen-turbo"
@@ -31,17 +32,38 @@ class QwenAdapter:
         if output is None:
             raise RuntimeError("DashScope returned empty output")
         choices = getattr(output, "choices", None) or output.get("choices")
+        text = ""
         if not choices:
             text = getattr(output, "text", None) or output.get("text")
-            if text:
-                return str(text)
-            raise RuntimeError("DashScope response missing choices")
-        first = choices[0]
-        message = getattr(first, "message", None) or first.get("message")
-        if isinstance(message, dict):
-            content = message.get("content")
+            if not text:
+                raise RuntimeError("DashScope response missing choices")
+            text = str(text)
         else:
-            content = getattr(message, "content", None)
-        if not content:
-            raise RuntimeError("DashScope response missing message content")
-        return str(content)
+            first = choices[0]
+            message = getattr(first, "message", None) or first.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+            else:
+                content = getattr(message, "content", None)
+            if not content:
+                raise RuntimeError("DashScope response missing message content")
+            text = str(content)
+
+        usage = None
+        usage_obj = getattr(response, "usage", None)
+        if usage_obj is not None:
+            if isinstance(usage_obj, dict):
+                usage = TokenUsage(
+                    prompt_tokens=usage_obj.get("input_tokens") or usage_obj.get("prompt_tokens"),
+                    completion_tokens=usage_obj.get("output_tokens") or usage_obj.get("completion_tokens"),
+                    total_tokens=usage_obj.get("total_tokens"),
+                )
+            else:
+                usage = TokenUsage(
+                    prompt_tokens=getattr(usage_obj, "input_tokens", None)
+                    or getattr(usage_obj, "prompt_tokens", None),
+                    completion_tokens=getattr(usage_obj, "output_tokens", None)
+                    or getattr(usage_obj, "completion_tokens", None),
+                    total_tokens=getattr(usage_obj, "total_tokens", None),
+                )
+        return ChatResult(text=text, usage=usage)

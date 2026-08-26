@@ -4,8 +4,9 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.agent.base import StepEvent
 from app.config import settings
-from app.constants import JobStatus, RETRY_BACKOFF_SECONDS, utcnow
+from app.constants import FailureCode, JobStatus, RETRY_BACKOFF_SECONDS, StepStatus, utcnow
 from app.db.models import ExecutionLog, PublishJob
 from app.platforms import is_publishable, require_platform
 from app.services.account_service import account_service
@@ -99,9 +100,55 @@ class JobService:
         return created, failed
 
     def cancel(self, db: Session, job: PublishJob) -> PublishJob:
-        if job.status in {JobStatus.SUCCESS.value, JobStatus.DEAD.value, JobStatus.CANCELLED.value}:
+        if job.status in {
+            JobStatus.SUCCESS.value,
+            JobStatus.DEAD.value,
+            JobStatus.CANCELLED.value,
+        }:
             raise ValueError("Job cannot be cancelled in current status")
         job.status = JobStatus.CANCELLED.value
+        job.completed_at = utcnow()
+        db.commit()
+        db.refresh(job)
+        return job
+
+    def resume_from_human(self, db: Session, job: PublishJob) -> PublishJob:
+        if job.status != JobStatus.WAITING_HUMAN.value:
+            raise ValueError("Job is not waiting for human intervention")
+        job.status = JobStatus.PENDING.value
+        job.error_message = None
+        job.scheduled_at = utcnow()
+        job.completed_at = None
+        db.commit()
+        self.add_log(
+            db,
+            job_id=job.id,
+            step="resume",
+            message="User resumed after human intervention",
+            status=StepStatus.SUCCESS.value,
+        )
+        db.refresh(job)
+        return job
+
+    def mark_waiting_human(
+        self,
+        db: Session,
+        job: PublishJob,
+        message: str,
+        *,
+        error_code: str,
+        action_url: str | None = None,
+        guidance: str | None = None,
+    ) -> PublishJob:
+        payload = {
+            "message": message,
+            "error_code": error_code,
+            "action_url": action_url,
+            "guidance": guidance,
+        }
+        job.status = JobStatus.WAITING_HUMAN.value
+        job.error_message = message
+        job.result_json = json.dumps(payload)
         job.completed_at = utcnow()
         db.commit()
         db.refresh(job)
@@ -131,17 +178,79 @@ class JobService:
         step: str,
         message: str | None = None,
         screenshot_path: str | None = None,
+        tool_name: str | None = None,
+        status: str | None = None,
+        duration_ms: int | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        total_tokens: int | None = None,
+        payload_json: str | None = None,
+        started_at: datetime | None = None,
     ) -> ExecutionLog:
         log = ExecutionLog(
             job_id=job_id,
             step=step,
             message=message,
             screenshot_path=screenshot_path,
+            tool_name=tool_name,
+            status=status,
+            duration_ms=duration_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            payload_json=payload_json,
+            started_at=started_at,
         )
         db.add(log)
         db.commit()
         db.refresh(log)
         return log
+
+    def add_step_event(self, db: Session, *, job_id: int, event: StepEvent) -> ExecutionLog:
+        payload = dict(event.payload or {})
+        payload["phase"] = event.phase
+        return self.add_log(
+            db,
+            job_id=job_id,
+            step=f"{event.phase}-{event.step}",
+            message=event.message,
+            screenshot_path=event.screenshot_path,
+            tool_name=event.tool_name,
+            status=event.status,
+            duration_ms=event.duration_ms,
+            prompt_tokens=event.prompt_tokens,
+            completion_tokens=event.completion_tokens,
+            total_tokens=event.total_tokens,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+        )
+
+    def build_step_callback(self, db: Session, job_id: int):
+        def on_step(event: StepEvent) -> None:
+            self.add_step_event(db, job_id=job_id, event=event)
+
+        return on_step
+
+    def get_job_detail(self, db: Session, job_id: int) -> dict | None:
+        job = self.get(db, job_id)
+        if job is None:
+            return None
+        steps = self.get_logs(db, job_id)
+        total_duration = sum(s.duration_ms or 0 for s in steps)
+        prompt_values = [s.prompt_tokens for s in steps if s.prompt_tokens is not None]
+        completion_values = [s.completion_tokens for s in steps if s.completion_tokens is not None]
+        total_values = [s.total_tokens for s in steps if s.total_tokens is not None]
+        totals = {
+            "duration_ms": total_duration,
+            "prompt_tokens": sum(prompt_values) if prompt_values else None,
+            "completion_tokens": sum(completion_values) if completion_values else None,
+            "total_tokens": sum(total_values) if total_values else None,
+        }
+        return {
+            "job": job,
+            "steps": steps,
+            "totals": totals,
+            "account_id": job.account_id,
+        }
 
     def execution_dir(self, job_id: int) -> Path:
         path = settings.data_dir / "execution" / str(job_id)

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import timedelta
 
@@ -12,7 +13,7 @@ from app.agent.factory import (
 from app.channels.base import PublishContext
 from app.channels.registry import get_channel
 from app.config import settings
-from app.constants import JobStatus, utcnow
+from app.constants import FailureCode, JobStatus, NON_RETRYABLE_FAILURES, StepStatus, utcnow
 from app.db.session import SessionLocal
 from app.services.account_service import account_service
 from app.services.content_service import content_service
@@ -164,6 +165,7 @@ class SchedulerWorker:
             channel = get_channel(job.platform)
             adapter = resolve_adapter_for_platform(job.platform)
             self._current_adapter_name = adapter_name_for_platform(job.platform)
+            on_step = job_service.build_step_callback(db, job.id)
             ctx = PublishContext(
                 db=db,
                 job=job,
@@ -172,6 +174,7 @@ class SchedulerWorker:
                 adapter=adapter,
                 execution_dir=execution_dir,
                 prompt=prompt,
+                on_step=on_step,
             )
 
             job_service.add_log(
@@ -179,6 +182,8 @@ class SchedulerWorker:
                 job_id=job.id,
                 step="start",
                 message=f"Worker started job via channel (adapter={self._current_adapter_name})",
+                status=StepStatus.SUCCESS.value,
+                tool_name="worker",
             )
             try:
                 result = await channel.publish(ctx)
@@ -200,10 +205,54 @@ class SchedulerWorker:
                 job.status = JobStatus.VERIFYING.value
                 db.commit()
                 job_service.finalize_success(db, job, result.data or {"message": result.message})
-                job_service.add_log(db, job_id=job.id, step="success", message=result.message)
+                job_service.add_log(
+                    db,
+                    job_id=job.id,
+                    step="success",
+                    message=result.message,
+                    status=StepStatus.SUCCESS.value,
+                    tool_name="channel",
+                )
+            elif result.error_code in NON_RETRYABLE_FAILURES:
+                action_url = f"/api/accounts/{job.account_id}/open-profile"
+                guidance = (
+                    "请在浏览器中完成登录或验证码验证，然后点击「我已完成，继续」重新排队执行。"
+                )
+                job_service.mark_waiting_human(
+                    db,
+                    job,
+                    result.message,
+                    error_code=result.error_code or FailureCode.LOGIN_REQUIRED.value,
+                    action_url=action_url,
+                    guidance=guidance,
+                )
+                job_service.add_log(
+                    db,
+                    job_id=job.id,
+                    step="waiting_human",
+                    message=result.message,
+                    status=StepStatus.WAITING_HUMAN.value,
+                    tool_name="channel",
+                    payload_json=json.dumps(
+                        {
+                            "error_code": result.error_code,
+                            "action_url": action_url,
+                            "guidance": guidance,
+                            "account_id": job.account_id,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
             else:
                 job_service.mark_failed(db, job, result.message, error_code=result.error_code)
-                job_service.add_log(db, job_id=job.id, step="failed", message=result.message)
+                job_service.add_log(
+                    db,
+                    job_id=job.id,
+                    step="failed",
+                    message=result.message,
+                    status=StepStatus.FAILED.value,
+                    tool_name="channel",
+                )
         finally:
             self._current_job_id = None
 

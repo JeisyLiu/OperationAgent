@@ -529,3 +529,97 @@ pre {
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
   .row { grid-template-columns: 1fr; }
 }
+
+.job-detail { margin-top: .5rem; }
+.job-detail-empty {
+  color: var(--muted);
+  padding: 1rem 0;
+}
+.job-detail-header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+.job-detail-header .stat strong.status-waiting_human { color: #f0b429; }
+.job-human-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #f0b429;
+  border-radius: 8px;
+  background: rgba(240, 180, 41, 0.08);
+}
+.job-human-card h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.job-human-card p { margin: 0 0 .75rem; color: var(--muted); }
+.job-human-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.step-line {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step-line-item {
+  position: relative;
+  padding: 0 0 1.25rem 1.75rem;
+}
+.step-line-item::before {
+  content: "";
+  position: absolute;
+  left: .45rem;
+  top: .55rem;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.step-line-item:last-child::before { display: none; }
+.step-dot {
+  position: absolute;
+  left: 0;
+  top: .35rem;
+  width: .95rem;
+  height: .95rem;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--panel);
+}
+.step-line-item.status-running .step-dot { border-color: var(--accent); background: var(--accent); }
+.step-line-item.status-success .step-dot { border-color: var(--ok); background: var(--ok); }
+.step-line-item.status-failed .step-dot { border-color: var(--bad); background: var(--bad); }
+.step-line-item.status-waiting_human .step-dot { border-color: #f0b429; background: #f0b429; }
+.step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+.step-title { font-weight: 600; }
+.step-meta {
+  color: var(--muted);
+  font-size: .82rem;
+}
+.step-toggle {
+  margin-left: auto;
+  font-size: .8rem;
+  padding: .2rem .5rem;
+}
+.step-body {
+  padding: .65rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.15);
+  font-size: .88rem;
+}
+.step-body[hidden] { display: none; }
+.step-body pre {
+  margin: .5rem 0 0;
+  padding: .5rem;
+  overflow: auto;
+  background: rgba(0,0,0,0.25);
+  border-radius: 4px;
+  font-size: .78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.step-screenshot { margin-top: .5rem; }
+.step-screenshot a { color: var(--accent); }

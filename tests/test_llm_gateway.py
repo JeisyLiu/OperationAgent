@@ -12,7 +12,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(os.environ['APP_DATA_DIR
 from app.db.models import AiSettings, Base, LlmModel
 from app.db.session import SessionLocal, engine
 from app.llm.gateway import LlmGateway
-from app.llm.types import BatchItem, BatchResult
+from app.llm.types import BatchItem, BatchResult, ChatResult
 from app.main import app
 from app.services.crypto import encrypt_text
 from app.services.llm_model_service import llm_model_service
@@ -114,7 +114,7 @@ def test_gateway_failover(mock_get_adapter):
     primary_adapter = MagicMock()
     backup_adapter = MagicMock()
     primary_adapter.chat.side_effect = RuntimeError("primary down")
-    backup_adapter.chat.return_value = "ok-from-backup"
+    backup_adapter.chat.return_value = ChatResult(text="ok-from-backup")
 
     def _adapter(provider):
         if provider == "openai":

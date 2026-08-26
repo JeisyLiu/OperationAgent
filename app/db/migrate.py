@@ -43,6 +43,25 @@ def run_migrations() -> None:
         conn.execute(text(LLM_MODELS_DDL))
         logger.info("Migration: ensured llm_models table exists")
 
+        if "execution_logs" in table_names:
+            columns = {col["name"] for col in inspector.get_columns("execution_logs")}
+            execution_log_columns = {
+                "tool_name": "TEXT",
+                "status": "TEXT",
+                "duration_ms": "INTEGER",
+                "prompt_tokens": "INTEGER",
+                "completion_tokens": "INTEGER",
+                "total_tokens": "INTEGER",
+                "payload_json": "TEXT",
+                "started_at": "DATETIME",
+            }
+            for col_name, col_type in execution_log_columns.items():
+                if col_name not in columns:
+                    conn.execute(
+                        text(f"ALTER TABLE execution_logs ADD COLUMN {col_name} {col_type}")
+                    )
+                    logger.info("Migration: added execution_logs.%s", col_name)
+
     _migrate_ai_settings_to_llm_models()
 
 

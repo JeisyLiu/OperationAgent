@@ -12,6 +12,14 @@ class JobStatus(StrEnum):
     RETRY = "RETRY"
     DEAD = "DEAD"
     CANCELLED = "CANCELLED"
+    WAITING_HUMAN = "WAITING_HUMAN"
+
+
+class StepStatus(StrEnum):
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    WAITING_HUMAN = "WAITING_HUMAN"
 
 
 class AccountStatus(StrEnum):

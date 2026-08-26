@@ -49,6 +49,7 @@ class ChromeDevToolsAdapter(AgentAdapter):
                 task_prompt=task.prompt,
                 media_path=media_abs,
                 execution_dir=execution_dir,
+                on_step=task.on_step,
             )
             self._status = status
             if status != AgentStatus.SUCCESS:

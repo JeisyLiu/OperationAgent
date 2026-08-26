@@ -102,12 +102,7 @@ async function refreshDashboard() {
       btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
     });
     draftsEl.querySelectorAll("[data-dash-history]").forEach((btn) => {
-      btn.onclick = () => {
-        showView("history");
-        const input = document.getElementById("history-job-id");
-        if (input) input.value = btn.dataset.dashHistory;
-        document.getElementById("load-history")?.click();
-      };
+      btn.onclick = () => openJobDetail(btn.dataset.dashHistory);
     });
   }
 
@@ -134,13 +129,7 @@ async function refreshDashboard() {
     btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
   });
   document.querySelectorAll("#dashboard-jobs [data-dash-history]").forEach((btn) => {
-    btn.onclick = () => {
-      const jobId = btn.dataset.dashHistory;
-      showView("history");
-      const input = document.getElementById("history-job-id");
-      if (input) input.value = jobId;
-      document.getElementById("load-history")?.click();
-    };
+    btn.onclick = () => openJobDetail(btn.dataset.dashHistory);
   });
 }
 
@@ -1044,31 +1033,141 @@ async function refreshQueue() {
     btn.onclick = () => api(`/api/jobs/${btn.dataset.retry}/retry`, { method: "POST" }).then(refreshQueue);
   });
   document.querySelectorAll("[data-logs]").forEach((btn) => {
-    btn.onclick = () => {
-      document.getElementById("history-job-id").value = btn.dataset.logs;
-      showView("history");
-      loadHistory();
-    };
+    btn.onclick = () => openJobDetail(btn.dataset.logs);
   });
 }
 
-async function loadHistory() {
-  const id = document.getElementById("history-job-id").value;
-  if (!id) return;
-  const logs = await api(`/api/jobs/${id}/logs`);
-  document.getElementById("history-list").innerHTML = logs
-    .map(
-      (l) => `
-      <div class="row">
-        <div>${l.step}</div>
-        <div>${l.message || ""}</div>
-        <div>${l.screenshot_path ? `<a href="${screenshotUrl(l.screenshot_path)}" target="_blank">screenshot</a>` : ""}</div>
-      </div>`
-    )
-    .join("");
+function formatTokens(value) {
+  return value == null ? "—" : String(value);
 }
 
-document.getElementById("load-history").onclick = loadHistory;
+function formatDuration(ms) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function parseStepPayload(step) {
+  if (!step.payload_json) return {};
+  try {
+    return JSON.parse(step.payload_json);
+  } catch {
+    return {};
+  }
+}
+
+function openJobDetail(jobId) {
+  showView("history");
+  const input = document.getElementById("history-job-id");
+  if (input) input.value = String(jobId);
+  loadJobDetail().catch((e) => alert(e.message));
+}
+
+function renderHumanCard(detail) {
+  const { job, steps, account_id } = detail;
+  if (job.status !== "WAITING_HUMAN") return "";
+  const waitStep = [...steps].reverse().find((s) => s.status === "WAITING_HUMAN" || s.step === "waiting_human");
+  const payload = waitStep ? parseStepPayload(waitStep) : {};
+  const guidance =
+    payload.guidance ||
+    "请在浏览器中完成登录或验证码，完成后点击继续执行。";
+  return `
+    <article class="job-human-card">
+      <h3>需要人工介入</h3>
+      <p>${escapeHtml(guidance)}</p>
+      <div class="job-human-actions">
+        <button type="button" data-human-open-profile="${account_id}">打开浏览器 Profile</button>
+        <button type="button" data-human-resume="${job.id}">我已完成，继续</button>
+      </div>
+    </article>`;
+}
+
+function renderJobDetail(detail) {
+  const container = document.getElementById("job-detail");
+  if (!container) return;
+  const { job, steps, totals } = detail;
+  const statusClass = String(job.status || "").toLowerCase();
+
+  container.innerHTML = `
+    <div class="job-detail-header">
+      <div class="stat"><strong>#${job.id}</strong><span>Job ID</span></div>
+      <div class="stat"><strong class="status-${statusClass}">${escapeHtml(job.status)}</strong><span>状态</span></div>
+      <div class="stat"><strong>${escapeHtml(job.platform)}</strong><span>平台</span></div>
+      <div class="stat"><strong>包 #${job.content_variant_id}</strong><span>内容包</span></div>
+      <div class="stat"><strong>${formatDuration(totals.duration_ms)}</strong><span>总耗时</span></div>
+      <div class="stat"><strong>${formatTokens(totals.total_tokens)}</strong><span>总 Token</span></div>
+    </div>
+    ${renderHumanCard(detail)}
+    <ol class="step-line">
+      ${steps
+        .map((step, index) => {
+          const payload = parseStepPayload(step);
+          const stepStatus = String(step.status || "running").toLowerCase();
+          const title = step.tool_name ? `${step.step} · ${step.tool_name}` : step.step;
+          const summary = step.message ? escapeHtml(step.message.slice(0, 120)) : "";
+          const payloadText = JSON.stringify(payload, null, 2);
+          return `
+        <li class="step-line-item status-${stepStatus}">
+          <span class="step-dot" aria-hidden="true"></span>
+          <div class="step-head">
+            <span class="step-title">${escapeHtml(title)}</span>
+            <span class="step-meta">${formatDuration(step.duration_ms)} · Token ${formatTokens(step.total_tokens)}</span>
+            <button type="button" class="step-toggle" data-step-toggle="${index}">展开</button>
+          </div>
+          ${summary ? `<div class="step-meta">${summary}</div>` : ""}
+          <div class="step-body" hidden data-step-body="${index}">
+            <div>状态：${escapeHtml(step.status || "—")}</div>
+            <div>Prompt tokens：${formatTokens(step.prompt_tokens)} · Completion：${formatTokens(step.completion_tokens)}</div>
+            ${step.message ? `<div>消息：${escapeHtml(step.message)}</div>` : ""}
+            ${Object.keys(payload).length ? `<pre>${escapeHtml(payloadText)}</pre>` : ""}
+            ${
+              step.screenshot_path
+                ? `<div class="step-screenshot"><a href="${screenshotUrl(step.screenshot_path)}" target="_blank">查看截图</a></div>`
+                : ""
+            }
+          </div>
+        </li>`;
+        })
+        .join("")}
+    </ol>`;
+
+  container.querySelectorAll("[data-step-toggle]").forEach((btn) => {
+    btn.onclick = () => {
+      const body = container.querySelector(`[data-step-body="${btn.dataset.stepToggle}"]`);
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.textContent = open ? "收起" : "展开";
+    };
+  });
+
+  container.querySelectorAll("[data-human-open-profile]").forEach((btn) => {
+    btn.onclick = () =>
+      api(`/api/accounts/${btn.dataset.humanOpenProfile}/open-profile`, { method: "POST" })
+        .then(() => alert("已尝试打开浏览器 Profile"))
+        .catch((e) => alert(e.message));
+  });
+
+  container.querySelectorAll("[data-human-resume]").forEach((btn) => {
+    btn.onclick = () =>
+      api(`/api/jobs/${btn.dataset.humanResume}/resume`, { method: "POST" })
+        .then(() => loadJobDetail())
+        .catch((e) => alert(e.message));
+  });
+}
+
+async function loadJobDetail() {
+  const id = document.getElementById("history-job-id")?.value;
+  const container = document.getElementById("job-detail");
+  if (!id) {
+    if (container) container.innerHTML = `<div class="job-detail-empty">输入 Job ID 查看推送详情。</div>`;
+    return;
+  }
+  const detail = await api(`/api/jobs/${id}/detail`);
+  renderJobDetail(detail);
+}
+
+document.getElementById("load-history").onclick = () => loadJobDetail().catch((e) => alert(e.message));
 
 let cachedLlmModels = [];
 

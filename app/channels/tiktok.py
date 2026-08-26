@@ -33,6 +33,7 @@ class TikTokChannel(Channel):
             prompt=ctx.prompt,
             media_path=ctx.variant.media_path,
             execution_dir=str(ctx.execution_dir),
+            on_step=ctx.on_step,
         )
 
         result = await ctx.adapter.execute(task)

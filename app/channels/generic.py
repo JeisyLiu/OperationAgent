@@ -53,6 +53,7 @@ class GenericAgentChannel(Channel):
             media_path=ctx.variant.media_path,
             execution_dir=str(ctx.execution_dir),
             metadata=metadata,
+            on_step=ctx.on_step,
         )
 
         result = await ctx.adapter.execute(task)
