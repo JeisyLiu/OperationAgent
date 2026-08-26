@@ -1002,6 +1002,147 @@ async function buildEnqueueLlmPreview(items) {
   };
 }
 
+const RUNNING_JOB_STATUSES = new Set(["PENDING", "CLAIMED", "EXECUTING", "VERIFYING"]);
+const RETRY_JOB_STATUSES = new Set(["FAILED", "DEAD", "CANCELLED", "RETRY"]);
+const REPUBLISH_JOB_STATUSES = new Set([
+  "SUCCESS",
+  "FAILED",
+  "DEAD",
+  "CANCELLED",
+  "WAITING_HUMAN",
+  "RETRY",
+]);
+
+function formatRepublishPreviewLines(preview) {
+  const lines = [];
+  if (preview.will_call_content_llm) {
+    lines.push("【内容 LLM】将重写标题/文案/话题");
+    const items = preview.llm || [];
+    if (items.length) {
+      const primary = items[0];
+      lines.push(
+        `· 主模型：${primary.alias} | ${primary.provider} | ${primary.model || "(default)"}`
+      );
+      if (items.length > 1) {
+        lines.push(
+          `· 备用：${items
+            .slice(1)
+            .map((m) => `${m.alias}/${m.provider}/${m.model || "?"}`)
+            .join("; ")}`
+        );
+      }
+    } else {
+      lines.push("· 警告：无启用的 LLM 配置");
+    }
+  } else {
+    lines.push("【内容】使用原内容包，不调用 LLM 重写");
+  }
+  if (preview.will_call_execution_llm) {
+    lines.push(`【执行 LLM】Worker 将通过 ${preview.adapter} 调用 LLM`);
+    if ((preview.llm || []).length) {
+      const primary = preview.llm[0];
+      lines.push(`· 执行层模型池：${primary.alias} | ${primary.provider} | ${primary.model || "(default)"}`);
+    }
+  } else {
+    lines.push(`【执行】adapter=${preview.adapter}，执行时不调用 LLM`);
+  }
+  return lines.join("\n");
+}
+
+function confirmLlmAction(title, preview) {
+  const parts = [title];
+  if (preview.warnings?.length) {
+    parts.push("", preview.warnings.map((w) => `⚠ ${w}`).join("\n"));
+  }
+  parts.push("", formatRepublishPreviewLines(preview), "", "确认继续？");
+  return confirm(parts.join("\n"));
+}
+
+function jobActionButtons(job, { includeOpenPackage = true } = {}) {
+  const status = String(job.status || "");
+  let html = "";
+  if (includeOpenPackage) {
+    html += `<button type="button" data-open-job-package="${job.content_variant_id}">Open package</button>`;
+  }
+  if (RUNNING_JOB_STATUSES.has(status)) {
+    html += `<button type="button" data-cancel="${job.id}">Cancel</button>`;
+  }
+  if (RETRY_JOB_STATUSES.has(status)) {
+    html += `<button type="button" data-retry-job="${job.id}">原内容重试</button>`;
+  }
+  if (REPUBLISH_JOB_STATUSES.has(status)) {
+    if (status === "SUCCESS" || status === "WAITING_HUMAN") {
+      html += `<button type="button" data-republish="${job.id}" data-rewrite="0">再发</button>`;
+    } else if (!RETRY_JOB_STATUSES.has(status)) {
+      html += `<button type="button" data-republish="${job.id}" data-rewrite="0">再发</button>`;
+    }
+    html += `<button type="button" data-republish="${job.id}" data-rewrite="1">重写后再发</button>`;
+  }
+  html += `<button type="button" data-logs="${job.id}">Logs</button>`;
+  return html;
+}
+
+async function confirmRetryJob(jobId) {
+  const preview = await api(`/api/jobs/${jobId}/republish/preview`, {
+    method: "POST",
+    body: JSON.stringify({ rewrite: false }),
+  });
+  preview.will_call_content_llm = false;
+  if (!confirmLlmAction(`即将原内容重试 Job #${jobId}`, preview)) return;
+  await api(`/api/jobs/${jobId}/retry`, { method: "POST" });
+  alert("任务已重新入队");
+  refreshQueue();
+  refreshDashboard();
+  if (document.getElementById("history-job-id")?.value === String(jobId)) {
+    loadJobDetail().catch((e) => alert(e.message));
+  }
+}
+
+async function confirmRepublishJob(jobId, rewrite) {
+  const isRewrite = Boolean(Number(rewrite));
+  const preview = await api(`/api/jobs/${jobId}/republish/preview`, {
+    method: "POST",
+    body: JSON.stringify({ rewrite: isRewrite }),
+  });
+  const title = isRewrite
+    ? `即将为 Job #${jobId} 重写内容并再发`
+    : `即将为 Job #${jobId} 再发（原内容）`;
+  if (!confirmLlmAction(title, preview)) return;
+  const result = await api(`/api/jobs/${jobId}/republish`, {
+    method: "POST",
+    body: JSON.stringify({ rewrite: isRewrite }),
+  });
+  alert(`已创建新任务 Job #${result.new_job.id}`);
+  refreshQueue();
+  refreshDashboard();
+  openJobDetail(result.new_job.id);
+}
+
+function wireJobActions(root = document) {
+  root.querySelectorAll("[data-open-job-package]").forEach((btn) => {
+    btn.onclick = () => openPackageVariant(Number(btn.dataset.openJobPackage)).catch((e) => alert(e.message));
+  });
+  root.querySelectorAll("[data-cancel]").forEach((btn) => {
+    btn.onclick = () =>
+      api(`/api/jobs/${btn.dataset.cancel}/cancel`, { method: "POST" })
+        .then(() => {
+          refreshQueue();
+          refreshDashboard();
+        })
+        .catch((e) => alert(e.message));
+  });
+  root.querySelectorAll("[data-retry-job]").forEach((btn) => {
+    btn.onclick = () => confirmRetryJob(Number(btn.dataset.retryJob)).catch((e) => alert(e.message));
+  });
+  root.querySelectorAll("[data-republish]").forEach((btn) => {
+    btn.onclick = () =>
+      confirmRepublishJob(Number(btn.dataset.republish), btn.dataset.rewrite).catch((e) => alert(e.message));
+  });
+  root.querySelectorAll("[data-logs]").forEach((btn) => {
+    btn.onclick = () => openJobDetail(btn.dataset.logs);
+  });
+}
+
 async function refreshQueue() {
   const jobs = await api("/api/jobs");
   document.getElementById("queue-list").innerHTML = jobs
@@ -1014,27 +1155,13 @@ async function refreshQueue() {
         <div class="status-${String(j.status || "").toLowerCase()}">${j.status}</div>
         <div>${j.scheduled_at || ""}</div>
         <div class="actions">
-          <button type="button" data-open-job-package="${j.content_variant_id}">Open package</button>
-          <button type="button" data-cancel="${j.id}">Cancel</button>
-          <button type="button" data-retry="${j.id}">Retry</button>
-          <button type="button" data-logs="${j.id}">Logs</button>
+          ${jobActionButtons(j)}
         </div>
       </div>`
     )
     .join("") || `<div class="hint">Queue is empty.</div>`;
 
-  document.querySelectorAll("[data-open-job-package]").forEach((btn) => {
-    btn.onclick = () => openPackageVariant(Number(btn.dataset.openJobPackage)).catch((e) => alert(e.message));
-  });
-  document.querySelectorAll("[data-cancel]").forEach((btn) => {
-    btn.onclick = () => api(`/api/jobs/${btn.dataset.cancel}/cancel`, { method: "POST" }).then(refreshQueue);
-  });
-  document.querySelectorAll("[data-retry]").forEach((btn) => {
-    btn.onclick = () => api(`/api/jobs/${btn.dataset.retry}/retry`, { method: "POST" }).then(refreshQueue);
-  });
-  document.querySelectorAll("[data-logs]").forEach((btn) => {
-    btn.onclick = () => openJobDetail(btn.dataset.logs);
-  });
+  wireJobActions(document.getElementById("queue-list"));
 }
 
 function formatTokens(value) {
@@ -1097,6 +1224,9 @@ function renderJobDetail(detail) {
       <div class="stat"><strong>${formatDuration(totals.duration_ms)}</strong><span>总耗时</span></div>
       <div class="stat"><strong>${formatTokens(totals.total_tokens)}</strong><span>总 Token</span></div>
     </div>
+    <div class="job-detail-actions actions">
+      ${jobActionButtons(job, { includeOpenPackage: false })}
+    </div>
     ${renderHumanCard(detail)}
     <ol class="step-line">
       ${steps
@@ -1154,6 +1284,8 @@ function renderJobDetail(detail) {
         .then(() => loadJobDetail())
         .catch((e) => alert(e.message));
   });
+
+  wireJobActions(container);
 }
 
 async function loadJobDetail() {

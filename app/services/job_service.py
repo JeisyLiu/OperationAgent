@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.agent.base import StepEvent
 from app.config import settings
-from app.constants import FailureCode, JobStatus, RETRY_BACKOFF_SECONDS, StepStatus, utcnow
+from app.constants import (
+    FailureCode,
+    JobStatus,
+    REPUBLISH_ALLOWED_STATUSES,
+    RETRY_ALLOWED_STATUSES,
+    RETRY_BACKOFF_SECONDS,
+    RUNNING_JOB_STATUSES,
+    StepStatus,
+    utcnow,
+)
 from app.db.models import ExecutionLog, PublishJob
 from app.platforms import is_publishable, require_platform
 from app.services.account_service import account_service
@@ -155,12 +164,174 @@ class JobService:
         return job
 
     def retry(self, db: Session, job: PublishJob) -> PublishJob:
+        if job.status not in RETRY_ALLOWED_STATUSES:
+            raise ValueError(
+                f"Job cannot be retried in status {job.status}. "
+                "Use republish for SUCCESS or resume for WAITING_HUMAN."
+            )
         job.status = JobStatus.PENDING.value
         job.scheduled_at = utcnow()
         job.error_message = None
+        job.retry_count = 0
+        job.completed_at = None
         db.commit()
+        self.add_log(
+            db,
+            job_id=job.id,
+            step="retry",
+            message="User retried job with original content",
+            status=StepStatus.SUCCESS.value,
+            tool_name="user",
+        )
         db.refresh(job)
         return job
+
+    def _ensure_republishable(self, job: PublishJob) -> None:
+        if job.status in RUNNING_JOB_STATUSES:
+            raise ValueError(f"Job cannot be republished while {job.status}")
+        if job.status not in REPUBLISH_ALLOWED_STATUSES:
+            raise ValueError(f"Job cannot be republished in status {job.status}")
+
+    def _build_republish_preview(
+        self,
+        db: Session,
+        job: PublishJob,
+        *,
+        rewrite: bool,
+    ) -> dict:
+        from app.agent.factory import adapter_name_for_platform
+        from app.services.llm_model_service import llm_model_service
+
+        self._ensure_republishable(job)
+        adapter = adapter_name_for_platform(job.platform)
+        will_call_execution_llm = adapter != "mock"
+        enabled = llm_model_service.list_enabled_configs(db)
+        llm_items = [
+            {
+                "alias": cfg.alias,
+                "provider": cfg.provider,
+                "model": cfg.model,
+                "base_url": cfg.base_url,
+            }
+            for cfg in enabled
+        ]
+        warnings: list[str] = []
+        if job.status == JobStatus.SUCCESS.value:
+            warnings.append("原任务已成功发布，再发可能产生重复内容")
+        if rewrite and not enabled:
+            warnings.append("未配置启用的 LLM，重写后再发将失败")
+        return {
+            "will_call_content_llm": rewrite,
+            "will_call_execution_llm": will_call_execution_llm,
+            "llm": llm_items,
+            "adapter": adapter,
+            "platform": job.platform,
+            "account_id": job.account_id,
+            "source_status": job.status,
+            "variant_mode": "clone_variant" if rewrite else "reuse_variant",
+            "warnings": warnings,
+        }
+
+    def preview_republish(
+        self,
+        db: Session,
+        job: PublishJob,
+        *,
+        rewrite: bool = False,
+    ) -> dict:
+        return self._build_republish_preview(db, job, rewrite=rewrite)
+
+    def republish(
+        self,
+        db: Session,
+        job: PublishJob,
+        *,
+        rewrite: bool = False,
+        scheduled_at: datetime | None = None,
+        max_retries: int = 3,
+    ) -> dict:
+        from app.services.content_generate_service import content_generate_service
+
+        self._ensure_republishable(job)
+        variant = content_service.get_variant(db, job.content_variant_id)
+        if variant is None:
+            raise ValueError("Content variant not found")
+
+        target_variant_id = job.content_variant_id
+        rewritten = False
+
+        if rewrite:
+            result = content_generate_service.generate_for_accounts(
+                db,
+                asset_id=variant.asset_id,
+                account_ids=[job.account_id],
+                replace_drafts=False,
+            )
+            if result.errors:
+                detail = result.errors[0].detail
+                raise ValueError(f"Failed to rewrite content: {detail}")
+            if not result.variants:
+                raise ValueError("Failed to rewrite content: no variant created")
+            generated = result.variants[0]
+            new_variant = content_service.get_variant(db, generated.id)
+            if new_variant is None:
+                raise ValueError("Failed to rewrite content: variant missing after generation")
+            content_service.update_variant(
+                db,
+                new_variant,
+                status="READY",
+            )
+            target_variant_id = new_variant.id
+            rewritten = True
+
+        when = scheduled_at or utcnow()
+        new_job = self.create(
+            db,
+            content_variant_id=target_variant_id,
+            account_id=job.account_id,
+            scheduled_at=when,
+            max_retries=max_retries,
+        )
+
+        self.add_log(
+            db,
+            job_id=job.id,
+            step="republished_as",
+            message=f"Republished as job #{new_job.id}",
+            status=StepStatus.SUCCESS.value,
+            tool_name="user",
+            payload_json=json.dumps(
+                {
+                    "new_job_id": new_job.id,
+                    "rewrite": rewrite,
+                    "variant_id": target_variant_id,
+                },
+                ensure_ascii=False,
+            ),
+        )
+        self.add_log(
+            db,
+            job_id=new_job.id,
+            step="republish_from",
+            message=f"Republish from job #{job.id}",
+            status=StepStatus.SUCCESS.value,
+            tool_name="user",
+            payload_json=json.dumps(
+                {
+                    "source_job_id": job.id,
+                    "rewrite": rewrite,
+                    "variant_id": target_variant_id,
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        return {
+            "original_job": job,
+            "new_job": new_job,
+            "variant_id": target_variant_id,
+            "rewritten": rewritten,
+        }
 
     def get_logs(self, db: Session, job_id: int) -> list[ExecutionLog]:
         return (

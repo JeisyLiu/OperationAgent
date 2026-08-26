@@ -43,6 +43,29 @@ NON_RETRYABLE_FAILURES = {
 
 RETRY_BACKOFF_SECONDS = [60, 300, 900]
 
+RETRY_ALLOWED_STATUSES = {
+    JobStatus.FAILED.value,
+    JobStatus.DEAD.value,
+    JobStatus.CANCELLED.value,
+    JobStatus.RETRY.value,
+}
+
+REPUBLISH_ALLOWED_STATUSES = {
+    JobStatus.SUCCESS.value,
+    JobStatus.FAILED.value,
+    JobStatus.DEAD.value,
+    JobStatus.CANCELLED.value,
+    JobStatus.WAITING_HUMAN.value,
+    JobStatus.RETRY.value,
+}
+
+RUNNING_JOB_STATUSES = {
+    JobStatus.PENDING.value,
+    JobStatus.CLAIMED.value,
+    JobStatus.EXECUTING.value,
+    JobStatus.VERIFYING.value,
+}
+
 
 def utcnow() -> datetime:
     return datetime.utcnow()

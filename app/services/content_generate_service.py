@@ -82,6 +82,7 @@ class ContentGenerateService:
         *,
         asset_id: int,
         account_ids: list[int],
+        replace_drafts: bool = True,
     ) -> GenerateVariantsResult:
         if not llm_model_service.list_enabled_configs(db):
             raise ValueError("AI settings not configured")
@@ -170,7 +171,7 @@ class ContentGenerateService:
                     errors.append(GenerateVariantError(account_id=account_id, detail=str(exc)))
 
             # Only replace drafts for accounts that generated successfully
-            if succeeded_account_ids:
+            if replace_drafts and succeeded_account_ids:
                 content_service.delete_skill_drafts_for_accounts(
                     db,
                     asset_id=asset_id,

@@ -12,6 +12,9 @@ from app.schemas.jobs import (
     JobDetailResponse,
     JobDetailTotals,
     JobResponse,
+    RepublishPreviewResponse,
+    RepublishRequest,
+    RepublishResponse,
 )
 from app.services.job_service import job_service
 
@@ -80,7 +83,48 @@ def retry_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     job = job_service.get(db, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job_service.retry(db, job)
+    try:
+        return job_service.retry(db, job)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{job_id}/republish/preview", response_model=RepublishPreviewResponse)
+def republish_preview(
+    job_id: int,
+    payload: RepublishRequest,
+    db: Session = Depends(get_db),
+) -> RepublishPreviewResponse:
+    job = job_service.get(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        preview = job_service.preview_republish(db, job, rewrite=payload.rewrite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RepublishPreviewResponse(**preview)
+
+
+@router.post("/{job_id}/republish", response_model=RepublishResponse)
+def republish_job(
+    job_id: int,
+    payload: RepublishRequest,
+    db: Session = Depends(get_db),
+) -> RepublishResponse:
+    job = job_service.get(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        result = job_service.republish(
+            db,
+            job,
+            rewrite=payload.rewrite,
+            scheduled_at=payload.scheduled_at,
+            max_retries=payload.max_retries,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RepublishResponse(**result)
 
 
 @router.get("/{job_id}/detail", response_model=JobDetailResponse)

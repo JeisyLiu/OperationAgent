@@ -81,3 +81,35 @@ class JobDetailResponse(BaseModel):
     steps: list[ExecutionLogResponse]
     totals: JobDetailTotals
     account_id: int
+
+
+class RepublishRequest(BaseModel):
+    rewrite: bool = False
+    scheduled_at: datetime | None = None
+    max_retries: int = 3
+
+
+class LlmPreviewItem(BaseModel):
+    alias: str
+    provider: str
+    model: str | None = None
+    base_url: str | None = None
+
+
+class RepublishPreviewResponse(BaseModel):
+    will_call_content_llm: bool
+    will_call_execution_llm: bool
+    llm: list[LlmPreviewItem] = Field(default_factory=list)
+    adapter: str
+    platform: str
+    account_id: int
+    source_status: str
+    variant_mode: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RepublishResponse(BaseModel):
+    original_job: JobResponse
+    new_job: JobResponse
+    variant_id: int
+    rewritten: bool
