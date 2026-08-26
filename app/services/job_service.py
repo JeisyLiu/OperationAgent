@@ -50,8 +50,7 @@ class JobService:
             raise ValueError(str(exc)) from exc
         if not is_publishable(variant.platform):
             raise ValueError(
-                f"Platform '{variant.platform}' does not support publishing yet. "
-                "You can create an account and log in, but scheduling jobs is not available."
+                f"Platform '{variant.platform}' is disabled and cannot accept publish jobs."
             )
 
         job = PublishJob(
@@ -251,13 +250,24 @@ class JobService:
             except json.JSONDecodeError:
                 section = ""
         media_path = variant.media_path if variant else ""
+        if not media_path:
+            media_path = "(none — text/image post, no video file)"
+
+        from app.platforms import get_platform
+
+        platform = get_platform(job.platform)
+        home_url = platform.home_url if platform else ""
+        upload_url = platform.upload_url if platform else home_url
+
         return template.format(
             platform=job.platform,
+            home_url=home_url,
+            upload_url=upload_url,
             media_path=media_path,
             title=variant.title if variant else "",
             caption=variant.caption if variant else "",
             hashtags=", ".join(hashtags),
-            section=section,
+            section=section or "(none)",
         )
 
 

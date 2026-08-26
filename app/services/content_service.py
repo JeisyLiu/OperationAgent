@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from sqlalchemy import Integer, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -142,10 +143,72 @@ class ContentService:
         return settings.data_dir / rel_path
 
     def list_variants(self, db: Session, asset_id: int | None = None) -> list[ContentVariant]:
-        query = db.query(ContentVariant).order_by(ContentVariant.id.desc())
+        items, _ = self.search_variants(db, asset_id=asset_id, page=1, page_size=10_000)
+        return items
+
+    def search_variants(
+        self,
+        db: Session,
+        *,
+        variant_id: int | None = None,
+        asset_id: int | None = None,
+        platform: str | None = None,
+        status: str | None = None,
+        account_id: int | None = None,
+        q: str | None = None,
+        generated_by: str | None = None,
+        sort: str = "id",
+        order: str = "desc",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[ContentVariant], int]:
+        query = db.query(ContentVariant)
+
+        if variant_id is not None:
+            query = query.filter(ContentVariant.id == variant_id)
         if asset_id is not None:
             query = query.filter(ContentVariant.asset_id == asset_id)
-        return query.all()
+        if platform is not None:
+            query = query.filter(ContentVariant.platform == platform.lower())
+        if status is not None:
+            query = query.filter(ContentVariant.status == status)
+        if account_id is not None:
+            query = query.filter(
+                cast(func.json_extract(ContentVariant.extra_json, "$.account_id"), Integer) == account_id
+            )
+        if generated_by is not None:
+            query = query.filter(
+                func.json_extract(ContentVariant.extra_json, "$.generated_by") == generated_by
+            )
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                or_(ContentVariant.title.like(like), ContentVariant.caption.like(like))
+            )
+
+        sort_columns = {
+            "id": ContentVariant.id,
+            "asset_id": ContentVariant.asset_id,
+            "platform": ContentVariant.platform,
+            "status": ContentVariant.status,
+        }
+        sort_col = sort_columns.get(sort, ContentVariant.id)
+        if order.lower() == "asc":
+            query = query.order_by(sort_col.asc())
+        else:
+            query = query.order_by(sort_col.desc())
+
+        page = max(1, page)
+        page_size = min(max(1, page_size), 100)
+        total = query.count()
+        items = query.offset((page - 1) * page_size).limit(page_size).all()
+        return items, total
+
+    def delete_variant(self, db: Session, variant: ContentVariant) -> None:
+        if variant.status != "DRAFT":
+            raise ValueError("Only DRAFT variants can be deleted")
+        db.delete(variant)
+        db.commit()
 
     def get_variant(self, db: Session, variant_id: int) -> ContentVariant | None:
         return db.query(ContentVariant).filter(ContentVariant.id == variant_id).first()

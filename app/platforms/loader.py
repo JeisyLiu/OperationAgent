@@ -101,9 +101,9 @@ def has_channel(platform_id: str) -> bool:
 
 def is_publishable(platform_id: str) -> bool:
     platform = get_platform(platform_id)
-    if platform is None or not platform.enabled or not platform.channel:
+    if platform is None:
         return False
-    return has_channel(platform_id)
+    return platform.enabled
 
 
 def get_open_url(platform_id: str) -> str:

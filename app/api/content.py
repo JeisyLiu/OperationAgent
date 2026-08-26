@@ -12,6 +12,7 @@ from app.schemas.content import (
     GenerateVariantsResponse,
     GenerateVariantErrorItem,
     VariantCreate,
+    VariantListResponse,
     VariantResponse,
     VariantUpdate,
 )
@@ -126,10 +127,41 @@ def generate_variants(
     )
 
 
-@router.get("/variants", response_model=list[VariantResponse])
-def list_variants(asset_id: int | None = None, db: Session = Depends(get_db)) -> list[VariantResponse]:
-    variants = content_service.list_variants(db, asset_id=asset_id)
-    return [_variant_response(v) for v in variants]
+@router.get("/variants", response_model=VariantListResponse)
+def list_variants(
+    id: int | None = None,
+    asset_id: int | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+    account_id: int | None = None,
+    q: str | None = None,
+    generated_by: str | None = None,
+    sort: str = "id",
+    order: str = "desc",
+    page: int = 1,
+    page_size: int = 20,
+    db: Session = Depends(get_db),
+) -> VariantListResponse:
+    items, total = content_service.search_variants(
+        db,
+        variant_id=id,
+        asset_id=asset_id,
+        platform=platform,
+        status=status,
+        account_id=account_id,
+        q=q,
+        generated_by=generated_by,
+        sort=sort,
+        order=order,
+        page=page,
+        page_size=page_size,
+    )
+    return VariantListResponse(
+        items=[_variant_response(v) for v in items],
+        total=total,
+        page=max(1, page),
+        page_size=min(max(1, page_size), 100),
+    )
 
 
 @router.post("/variants", response_model=VariantResponse)
@@ -180,3 +212,15 @@ def patch_variant(
         status=payload.status,
     )
     return _variant_response(updated)
+
+
+@router.delete("/variants/{variant_id}")
+def delete_variant(variant_id: int, db: Session = Depends(get_db)) -> dict:
+    variant = content_service.get_variant(db, variant_id)
+    if variant is None:
+        raise HTTPException(status_code=404, detail="Variant not found")
+    try:
+        content_service.delete_variant(db, variant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}

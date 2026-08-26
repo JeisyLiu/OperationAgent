@@ -29,9 +29,14 @@ class BrowserUseAdapter(AgentAdapter):
 
         try:
             platform = require_platform(task.platform)
-            url = platform.open_url
+            url = (
+                task.metadata.get("upload_url")
+                or task.metadata.get("home_url")
+                or platform.upload_url
+                or platform.open_url
+            )
         except Exception:
-            url = "https://www.google.com"
+            url = task.metadata.get("upload_url") or task.metadata.get("home_url") or "https://www.google.com"
 
         profile_path = Path(task.profile_path)
         if not profile_path.is_absolute():

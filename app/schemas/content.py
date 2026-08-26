@@ -63,6 +63,13 @@ class VariantResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class VariantListResponse(BaseModel):
+    items: list[VariantResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class GenerateVariantsRequest(BaseModel):
     account_ids: list[int]
 

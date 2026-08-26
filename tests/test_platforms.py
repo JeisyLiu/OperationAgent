@@ -47,6 +47,10 @@ def test_tiktok_has_no_section_choices():
     assert choices == []
 
 
-def test_bilibili_not_publishable_yet():
+def test_bilibili_is_publishable():
     assert get_platform("bilibili") is not None
-    assert is_publishable("bilibili") is False
+    assert is_publishable("bilibili") is True
+
+
+def test_rednote_is_publishable():
+    assert is_publishable("rednote") is True

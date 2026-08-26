@@ -230,6 +230,7 @@ def test_build_task_prompt_includes_section():
         )
         prompt = job_service.build_task_prompt(db, job)
         assert "分区/版块：Trending" in prompt
+        assert "发布/上传入口" in prompt
     finally:
         db.close()
 
@@ -267,6 +268,5 @@ def test_bulk_jobs_tiktok_and_bilibili(client: TestClient):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["created"]) == 1
-    assert len(body["failed"]) == 1
-    assert "does not support publishing" in body["failed"][0]["detail"]
+    assert len(body["created"]) == 2
+    assert len(body["failed"]) == 0

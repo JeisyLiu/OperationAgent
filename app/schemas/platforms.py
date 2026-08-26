@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.platforms import is_publishable
+from app.platforms import has_channel, is_publishable
 from app.schemas.accounts import AccountSkill
 
 
@@ -13,6 +13,7 @@ class PlatformResponse(BaseModel):
     enabled: bool
     channel: str | None
     publishable: bool
+    has_dedicated_channel: bool
     media_types: list[str]
     default_persona: str | None = None
     default_skill: AccountSkill | None = None
@@ -30,6 +31,7 @@ def to_platform_response(platform) -> PlatformResponse:
         enabled=platform.enabled,
         channel=platform.channel,
         publishable=is_publishable(platform.id),
+        has_dedicated_channel=has_channel(platform.channel) if platform.channel else False,
         media_types=platform.media_types,
         default_persona=platform.default_persona,
         default_skill=default_skill,

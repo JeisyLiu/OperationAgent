@@ -30,7 +30,15 @@ document.querySelectorAll(".nav").forEach((btn) => {
 });
 
 async function refreshDashboard() {
-  const jobs = await api("/api/jobs");
+  const [jobs, draftsResp] = await Promise.all([
+    api("/api/jobs"),
+    api("/api/content/variants?status=DRAFT&generated_by=skill&page=1&page_size=8&sort=id&order=desc").catch(
+      () => ({ items: [], total: 0 })
+    ),
+  ]);
+  const drafts = unwrapVariantList(draftsResp);
+  const draftTotal = Array.isArray(draftsResp) ? drafts.length : Number(draftsResp.total || drafts.length);
+
   const counts = jobs.reduce(
     (acc, j) => {
       acc.all += 1;
@@ -44,32 +52,75 @@ async function refreshDashboard() {
   );
 
   document.getElementById("dashboard-stats").innerHTML = `
+    <div class="stat"><strong>${draftTotal}</strong><span>Draft packages</span></div>
     <div class="stat"><strong>${counts.pending}</strong><span>Queued</span></div>
     <div class="stat"><strong>${counts.running}</strong><span>Running</span></div>
     <div class="stat"><strong>${counts.success}</strong><span>Success</span></div>
     <div class="stat"><strong>${counts.failed}</strong><span>Failed</span></div>
   `;
 
-  document.getElementById("dashboard-jobs").innerHTML = jobs
-    .slice(0, 8)
-    .map(
-      (j) => `
+  const draftsEl = document.getElementById("dashboard-drafts");
+  if (draftsEl) {
+    draftsEl.innerHTML = drafts.length
+      ? drafts
+          .map(
+            (v) => `
+        <div class="row">
+          <div>包 #${v.id}</div>
+          <div>${escapeHtml(platformLabel(v.platform))}</div>
+          <div>${escapeHtml((v.title || v.caption || "").slice(0, 40))}</div>
+          <div class="actions">
+            <button type="button" data-dash-open-package="${v.id}">Open</button>
+          </div>
+        </div>`
+          )
+          .join("")
+      : `<div class="hint">暂无草稿内容包。去 Content 生成即可。</div>`;
+    draftsEl.querySelectorAll("[data-dash-open-package]").forEach((btn) => {
+      btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
+    });
+  }
+
+  document.getElementById("dashboard-jobs").innerHTML = jobs.length
+    ? jobs
+        .slice(0, 8)
+        .map(
+          (j) => `
       <div class="row">
-        <div>#${j.id}</div>
+        <div>Job #${j.id}</div>
+        <div>包 #${j.content_variant_id}</div>
         <div>${j.platform}</div>
         <div class="status-${j.status.toLowerCase()}">${j.status}</div>
-        <div>${j.error_message || "-"}</div>
+        <div class="actions">
+          <button type="button" data-dash-open-package="${j.content_variant_id}">Open package</button>
+          <button type="button" data-dash-history="${j.id}">Logs</button>
+        </div>
       </div>`
-    )
-    .join("");
+        )
+        .join("")
+    : `<div class="hint">暂无发布任务。</div>`;
+
+  document.querySelectorAll("#dashboard-jobs [data-dash-open-package]").forEach((btn) => {
+    btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
+  });
+  document.querySelectorAll("[data-dash-history]").forEach((btn) => {
+    btn.onclick = () => {
+      const jobId = btn.dataset.dashHistory;
+      showView("history");
+      const input = document.getElementById("history-job-id");
+      if (input) input.value = jobId;
+      document.getElementById("load-history")?.click();
+    };
+  });
 }
 
 let platformCatalog = [];
 let cachedAccounts = [];
-let cachedVariants = [];
 let wizardStep = 1;
 let wizardAssetId = Number(sessionStorage.getItem("wizardAssetId") || 0) || null;
 let reviewVariants = [];
+let packagesPage = 1;
+let packagesPageSize = 20;
 
 function setWizardAssetId(id) {
   wizardAssetId = id;
@@ -81,15 +132,16 @@ function isSkillDraft(variant) {
   return Boolean(variant && variant.generated_by === "skill" && variant.account_id);
 }
 
-async function loadDraftPackages(assetId) {
-  if (!assetId) {
-    reviewVariants = [];
-    return [];
-  }
-  const variants = await api(`/api/content/variants?asset_id=${assetId}`);
-  // Keep latest draft per account_id
+/** Accept paginated {items} or legacy array responses. */
+function unwrapVariantList(resp) {
+  if (Array.isArray(resp)) return resp;
+  if (resp && Array.isArray(resp.items)) return resp.items;
+  return [];
+}
+
+function applyReviewVariants(variants) {
   const byAccount = new Map();
-  for (const variant of variants) {
+  for (const variant of variants || []) {
     if (!isSkillDraft(variant)) continue;
     const prev = byAccount.get(variant.account_id);
     if (!prev || variant.id > prev.id) {
@@ -98,6 +150,17 @@ async function loadDraftPackages(assetId) {
   }
   reviewVariants = Array.from(byAccount.values()).sort((a, b) => b.id - a.id);
   return reviewVariants;
+}
+
+async function loadDraftPackages(assetId) {
+  if (!assetId) {
+    reviewVariants = [];
+    return [];
+  }
+  const resp = await api(
+    `/api/content/variants?asset_id=${assetId}&generated_by=skill&page_size=100&sort=id&order=desc`
+  );
+  return applyReviewVariants(unwrapVariantList(resp));
 }
 
 async function fillMotherFormFromAsset(assetId) {
@@ -183,22 +246,32 @@ function isPublishable(platformId) {
   return Boolean(match && match.publishable);
 }
 
+function hasDedicatedChannel(platformId) {
+  const match = platformCatalog.find((p) => p.id === platformId);
+  return Boolean(match && match.has_dedicated_channel);
+}
+
 function platformLabel(platformId) {
   const match = platformCatalog.find((p) => p.id === platformId);
   if (!match) return platformId;
-  return match.publishable ? match.display_name : `${match.display_name} (login only)`;
+  if (!match.publishable) return `${match.display_name} (disabled)`;
+  if (!match.has_dedicated_channel) return `${match.display_name} (generic agent)`;
+  return match.display_name;
 }
 
-function renderPlatformOptions(selectId, { publishableOnly = false } = {}) {
+function renderPlatformOptions(selectId, { publishableOnly = false, includeBlank = false, blankLabel = "All" } = {}) {
   const select = document.getElementById(selectId);
   if (!select) return;
   const items = platformCatalog.filter((p) => !publishableOnly || p.publishable);
-  select.innerHTML = items
-    .map(
-      (p) =>
-        `<option value="${p.id}">${p.display_name}${p.publishable ? "" : " (login only)"}</option>`
-    )
-    .join("");
+  const blank = includeBlank ? `<option value="">${escapeHtml(blankLabel)}</option>` : "";
+  select.innerHTML =
+    blank +
+    items
+      .map(
+        (p) =>
+          `<option value="${p.id}">${p.display_name}${p.publishable ? (p.has_dedicated_channel ? "" : " (generic agent)") : " (disabled)"}</option>`
+      )
+      .join("");
 }
 
 async function loadPlatforms() {
@@ -298,7 +371,7 @@ function renderWizardAccountPicks() {
         .join("");
       return `
         <div class="account-group">
-          <h4>${escapeHtml(meta.display_name)}${meta.publishable ? "" : " (login only)"}</h4>
+          <h4>${escapeHtml(meta.display_name)}${meta.publishable ? (meta.has_dedicated_channel ? "" : " (generic agent)") : " (disabled)"}</h4>
           <div class="account-picks">${rows}</div>
         </div>`;
     })
@@ -312,12 +385,21 @@ function renderReviewPackages() {
     container.innerHTML = `<div class="hint">No generated packages yet. Go back and generate first.</div>`;
     return;
   }
-  container.innerHTML = reviewVariants
-    .map((v) => {
-      const publishable = isPublishable(v.platform);
-      const choices = sectionChoices(v.platform);
-      const sectionField = choices.length
-        ? `<label>${sectionLabel(v.platform)}
+  const publishableCount = reviewVariants.filter((v) => isPublishable(v.platform)).length;
+  const banner =
+    publishableCount === 0
+      ? `<div class="hint warn">当前内容包所属平台均已禁用，无法入队。</div>`
+      : `<div class="hint">可入队 ${publishableCount} / ${reviewVariants.length} 个内容包。无专用 Channel 的平台将走通用工具 Agent 执行。</div>`;
+  container.innerHTML =
+    banner +
+    reviewVariants
+      .map((v) => {
+        const publishable = isPublishable(v.platform);
+        const dedicated = hasDedicatedChannel(v.platform);
+        const meta = platformMeta(v.platform);
+        const choices = sectionChoices(v.platform);
+        const sectionField = choices.length
+          ? `<label>${escapeHtml(sectionLabel(v.platform))}
             <select data-field="section" data-variant-id="${v.id}">
               <option value="">—</option>
               ${choices
@@ -328,30 +410,36 @@ function renderReviewPackages() {
                 .join("")}
             </select>
           </label>`
-        : "";
-      return `
-        <article class="package-card" data-variant-id="${v.id}">
+          : "";
+        const accountTitle = escapeHtml(v.account_name || `Account #${v.account_id}`);
+        const platformName = escapeHtml(meta.display_name || v.platform);
+        const statusBadge = escapeHtml(v.status || "DRAFT");
+        return `
+        <article class="package-card ${publishable ? "" : "login-only-card"}" data-variant-id="${v.id}">
           <div class="package-card-header">
             <label class="check-row">
-              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" ${publishable ? "checked" : ""} />
-              <strong>${escapeHtml(v.account_name || `Account #${v.account_id}`)}</strong>
-              <span>· ${escapeHtml(platformLabel(v.platform))}</span>
+              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" data-platform="${escapeHtml(v.platform)}" ${publishable ? "checked" : ""} ${publishable ? "" : "disabled"} />
+              <span class="card-title">
+                <strong class="package-id">内容包 #${v.id}</strong>
+                <span class="meta">${accountTitle} · #${v.account_id} · ${platformName}</span>
+              </span>
             </label>
-            <span class="package-badge ${publishable ? "publishable" : "login-only"}">${publishable ? "publishable" : "login only（可勾选审阅，入队会被拒绝）"}</span>
+            <span class="package-badge status-${statusBadge.toLowerCase()}">${statusBadge}</span>
+            <span class="package-badge ${dedicated ? "publishable" : "login-only"}">${dedicated ? "dedicated channel" : "generic agent"}</span>
           </div>
           <label>Title
-            <input data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
+            <input type="text" data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
           </label>
           <label>Caption
-            <textarea data-field="caption" data-variant-id="${v.id}" rows="4">${escapeHtml(v.caption || "")}</textarea>
+            <textarea data-field="caption" data-variant-id="${v.id}" rows="5">${escapeHtml(v.caption || "")}</textarea>
           </label>
           <label>Hashtags (comma-separated)
-            <input data-field="hashtags" data-variant-id="${v.id}" value="${escapeHtml((v.hashtags || []).join(", "))}" />
+            <input type="text" data-field="hashtags" data-variant-id="${v.id}" value="${escapeHtml((v.hashtags || []).join(", "))}" />
           </label>
           ${sectionField}
         </article>`;
-    })
-    .join("");
+      })
+      .join("");
 
   // Persist field edits into reviewVariants as user types/selects
   container.querySelectorAll("[data-field]").forEach((el) => {
@@ -445,41 +533,124 @@ function renderEnqueueList() {
   // legacy no-op; wizard step 3 handles enqueue UI
 }
 
-async function refreshContent() {
-  const assets = await api("/api/content/assets");
-  cachedVariants = await api("/api/content/variants");
-  const draftCountByAsset = cachedVariants.reduce((acc, v) => {
-    if (!isSkillDraft(v)) return acc;
-    acc[v.asset_id] = (acc[v.asset_id] || 0) + 1;
-    return acc;
-  }, {});
-  document.getElementById("content-list").innerHTML = [
-    ...assets.map((a) => {
-      const drafts = draftCountByAsset[a.id] || 0;
-      const current = wizardAssetId === a.id ? " · current" : "";
-      return `<div class="row">
-        <div>Asset #${a.id}${current}</div>
-        <div>${escapeHtml(a.title)}</div>
-        <div>${a.status} · ${drafts} draft(s)</div>
-        <div class="actions">
-          <button type="button" data-resume-asset="${a.id}">Resume</button>
-        </div>
-      </div>`;
-    }),
-    ...cachedVariants
-      .filter((v) => isSkillDraft(v))
-      .slice(0, 20)
-      .map(
-        (v) =>
-          `<div class="row"><div>Draft #${v.id}</div><div>${platformLabel(v.platform)}</div><div>${escapeHtml(
-            (v.title || v.caption || "").slice(0, 60)
-          )}</div><div>acct #${v.account_id || "-"} · asset #${v.asset_id}</div></div>`
-      ),
-  ].join("") || `<div class="hint">No assets yet.</div>`;
+function packagesFilterParams(page = packagesPage) {
+  const form = document.getElementById("packages-filter-form");
+  if (!form) return { page, page_size: packagesPageSize };
+  const fd = new FormData(form);
+  const params = new URLSearchParams();
+  for (const [key, value] of fd.entries()) {
+    if (value !== "" && value != null) params.set(key, String(value));
+  }
+  params.set("page", String(page));
+  params.set("page_size", String(packagesPageSize));
+  return Object.fromEntries(params.entries());
+}
 
-  document.querySelectorAll("[data-resume-asset]").forEach((btn) => {
+function buildPackagesQuery(page = packagesPage) {
+  const params = packagesFilterParams(page);
+  const qs = new URLSearchParams(params);
+  return `/api/content/variants?${qs.toString()}`;
+}
+
+async function openPackageVariant(variantId) {
+  const variant = await api(`/api/content/variants/${variantId}`);
+  setWizardAssetId(variant.asset_id);
+  await fillMotherFormFromAsset(variant.asset_id);
+  await loadDraftPackages(variant.asset_id);
+  setWizardStep(3);
+  showView("content");
+}
+
+async function deletePackageVariant(variantId) {
+  if (!confirm(`Delete draft package #${variantId}?`)) return;
+  await api(`/api/content/variants/${variantId}`, { method: "DELETE" });
+  await loadPackagesTable(packagesPage);
+}
+
+function renderPackagesTable(resp) {
+  const container = document.getElementById("packages-table");
+  const pager = document.getElementById("packages-pagination");
+  if (!container) return;
+
+  const items = unwrapVariantList(resp);
+  if (!items.length) {
+    container.innerHTML = `<div class="hint">No packages found.</div>`;
+  } else {
+    const header = `
+      <div class="row packages-head">
+        <div>ID</div>
+        <div>Asset</div>
+        <div>Account</div>
+        <div>Platform</div>
+        <div>Title</div>
+        <div>Status</div>
+        <div>Section</div>
+        <div>Actions</div>
+      </div>`;
+    const rows = items
+      .map((v) => {
+        const title = escapeHtml((v.title || v.caption || "").slice(0, 48));
+        const account = escapeHtml(v.account_name || (v.account_id ? `#${v.account_id}` : "-"));
+        const section = escapeHtml(v.section || "-");
+        const canDelete = v.status === "DRAFT";
+        return `
+        <div class="row packages-row">
+          <div>#${v.id}</div>
+          <div>#${v.asset_id}</div>
+          <div>${account}</div>
+          <div>${escapeHtml(platformLabel(v.platform))}</div>
+          <div>${title}</div>
+          <div class="status-${String(v.status || "").toLowerCase()}">${escapeHtml(v.status)}</div>
+          <div>${section}</div>
+          <div class="actions">
+            <button type="button" data-open-package="${v.id}">Open</button>
+            <button type="button" data-resume-asset="${v.asset_id}">Resume asset</button>
+            ${canDelete ? `<button type="button" data-delete-package="${v.id}" class="danger">Delete</button>` : ""}
+          </div>
+        </div>`;
+      })
+      .join("");
+    container.innerHTML = header + rows;
+  }
+
+  if (pager) {
+    const page = Number(resp.page || packagesPage || 1);
+    const pageSize = Number(resp.page_size || packagesPageSize);
+    const total = Array.isArray(resp) ? items.length : Number(resp.total || items.length);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    pager.innerHTML = `
+      <button type="button" id="packages-prev" ${page <= 1 ? "disabled" : ""}>Previous</button>
+      <span>Page ${page} / ${totalPages} · ${total} total</span>
+      <button type="button" id="packages-next" ${page >= totalPages ? "disabled" : ""}>Next</button>`;
+    document.getElementById("packages-prev")?.addEventListener("click", () => {
+      if (page > 1) loadPackagesTable(page - 1).catch((e) => alert(e.message));
+    });
+    document.getElementById("packages-next")?.addEventListener("click", () => {
+      if (page < totalPages) loadPackagesTable(page + 1).catch((e) => alert(e.message));
+    });
+  }
+
+  container.querySelectorAll("[data-open-package]").forEach((btn) => {
+    btn.onclick = () => openPackageVariant(Number(btn.dataset.openPackage)).catch((e) => alert(e.message));
+  });
+  container.querySelectorAll("[data-resume-asset]").forEach((btn) => {
     btn.onclick = () => resumeWizardAsset(Number(btn.dataset.resumeAsset)).catch((e) => alert(e.message));
   });
+  container.querySelectorAll("[data-delete-package]").forEach((btn) => {
+    btn.onclick = () => deletePackageVariant(Number(btn.dataset.deletePackage)).catch((e) => alert(e.message));
+  });
+}
+
+async function loadPackagesTable(page = 1) {
+  packagesPage = page;
+  const resp = await api(buildPackagesQuery(page));
+  renderPackagesTable(resp);
+  return resp;
+}
+
+async function refreshContent() {
+  renderPlatformOptions("packages-platform", { includeBlank: true, blankLabel: "All platforms" });
+  await loadPackagesTable(packagesPage);
 }
 
 document.getElementById("publish-mother-form").onsubmit = async (e) => {
@@ -529,6 +700,11 @@ document.getElementById("publish-mother-form").onsubmit = async (e) => {
 document.getElementById("btn-wizard-back-2").onclick = () => setWizardStep(1);
 document.getElementById("btn-wizard-back-3").onclick = () => setWizardStep(2);
 
+document.getElementById("packages-filter-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  loadPackagesTable(1).catch((err) => alert(err.message));
+});
+
 document.getElementById("btn-select-all-accounts").onclick = () => {
   document.querySelectorAll('input[name="wizard_account"]').forEach((el) => {
     el.checked = true;
@@ -548,18 +724,47 @@ document.getElementById("btn-generate-packages").onclick = async () => {
     alert("Create mother content first and select at least one ACTIVE account.");
     return;
   }
+  const btn = document.getElementById("btn-generate-packages");
+  const statusEl = document.getElementById("generate-status");
+  const resultEl = document.getElementById("generate-result");
+  if (btn) btn.disabled = true;
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.textContent = `Generating packages for ${accountIds.length} account(s)…`;
+  }
   try {
     const result = await api(`/api/content/assets/${wizardAssetId}/generate-variants`, {
       method: "POST",
       body: JSON.stringify({ account_ids: accountIds }),
     });
-    document.getElementById("generate-result").textContent = JSON.stringify(result, null, 2);
-    await loadDraftPackages(wizardAssetId);
-    renderReviewPackages();
-    setWizardStep(3);
+    const created = result.variants || [];
+    const errors = result.errors || [];
+    if (resultEl) {
+      resultEl.hidden = false;
+      resultEl.textContent = JSON.stringify(result, null, 2);
+    }
+    if (created.length) {
+      applyReviewVariants(created);
+      // Merge with any surviving drafts from failed accounts
+      await loadDraftPackages(wizardAssetId);
+      renderReviewPackages();
+      setWizardStep(3);
+    }
+    const summary = `生成完成：成功 ${created.length}，失败 ${errors.length}`;
+    if (statusEl) statusEl.textContent = summary;
+    if (errors.length) {
+      const detail = errors.map((e) => `#${e.account_id}: ${e.detail}`).join("\n");
+      alert(`${summary}\n\n${detail}`);
+    } else if (!created.length) {
+      alert("未生成任何内容包。请检查 LLM 配置与账号状态。");
+    }
     await refreshContent();
+    await refreshDashboard();
   } catch (err) {
+    if (statusEl) statusEl.textContent = `生成失败：${err.message}`;
     alert(err.message);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 };
 
@@ -595,17 +800,20 @@ document.getElementById("btn-save-packages").onclick = async () => {
 document.getElementById("btn-enqueue-selected").onclick = async () => {
   const edits = collectReviewEdits();
   const editMap = Object.fromEntries(edits.map((v) => [v.id, v]));
-  const items = Array.from(document.querySelectorAll('input[name="enqueue_variant"]:checked')).map((el) => {
-    const variantId = Number(el.value);
-    const variant = editMap[variantId];
-    return {
-      content_variant_id: variantId,
-      account_id: Number(el.dataset.accountId),
-      _variant: variant,
-    };
-  });
+  const items = Array.from(document.querySelectorAll('input[name="enqueue_variant"]:checked:not(:disabled)'))
+    .map((el) => {
+      const variantId = Number(el.value);
+      const variant = editMap[variantId];
+      return {
+        content_variant_id: variantId,
+        account_id: Number(el.dataset.accountId),
+        platform: el.dataset.platform || variant?.platform,
+        _variant: variant,
+      };
+    })
+    .filter((item) => isPublishable(item.platform));
   if (items.length === 0) {
-    alert("Select at least one publishable package.");
+    alert("没有可入队的内容包。请确认平台已启用且账号为 ACTIVE。");
     return;
   }
   try {
@@ -618,6 +826,7 @@ document.getElementById("btn-enqueue-selected").onclick = async () => {
             caption: item._variant.caption || null,
             hashtags: item._variant.hashtags || [],
             section: item._variant.section || "",
+            status: "READY",
           }),
         });
       }
@@ -628,10 +837,18 @@ document.getElementById("btn-enqueue-selected").onclick = async () => {
         items: items.map(({ content_variant_id, account_id }) => ({ content_variant_id, account_id })),
       }),
     });
-    alert(`Created ${result.created.length} job(s). Failed: ${result.failed.length}`);
-    if (result.failed.length) console.log(result.failed);
+    const failed = result.failed || [];
+    const created = result.created || [];
+    let msg = `Created ${created.length} job(s). Failed: ${failed.length}`;
+    if (failed.length) {
+      msg +=
+        "\n\n" +
+        failed.map((f) => `包 #${f.content_variant_id} / 账号 #${f.account_id}: ${f.detail}`).join("\n");
+    }
+    alert(msg);
     refreshQueue();
     refreshDashboard();
+    refreshContent();
   } catch (err) {
     alert(err.message);
   }
@@ -643,18 +860,24 @@ async function refreshQueue() {
     .map(
       (j) => `
       <div class="row">
-        <div>#${j.id}</div>
-        <div>${j.status}</div>
+        <div>Job #${j.id}</div>
+        <div>包 #${j.content_variant_id}</div>
+        <div>${j.platform || "-"}</div>
+        <div class="status-${String(j.status || "").toLowerCase()}">${j.status}</div>
         <div>${j.scheduled_at || ""}</div>
         <div class="actions">
-          <button data-cancel="${j.id}">Cancel</button>
-          <button data-retry="${j.id}">Retry</button>
-          <button data-logs="${j.id}">Logs</button>
+          <button type="button" data-open-job-package="${j.content_variant_id}">Open package</button>
+          <button type="button" data-cancel="${j.id}">Cancel</button>
+          <button type="button" data-retry="${j.id}">Retry</button>
+          <button type="button" data-logs="${j.id}">Logs</button>
         </div>
       </div>`
     )
-    .join("");
+    .join("") || `<div class="hint">Queue is empty.</div>`;
 
+  document.querySelectorAll("[data-open-job-package]").forEach((btn) => {
+    btn.onclick = () => openPackageVariant(Number(btn.dataset.openJobPackage)).catch((e) => alert(e.message));
+  });
   document.querySelectorAll("[data-cancel]").forEach((btn) => {
     btn.onclick = () => api(`/api/jobs/${btn.dataset.cancel}/cancel`, { method: "POST" }).then(refreshQueue);
   });

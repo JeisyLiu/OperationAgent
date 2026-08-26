@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260826b" />
+  <link rel="stylesheet" href="/static/style.css?v=20260826g" />
 </head>
 <body>
   <div class="layout">
@@ -26,8 +26,16 @@
       <section id="view-dashboard" class="view active">
         <h2>Dashboard</h2>
         <div class="stats" id="dashboard-stats"></div>
-        <h3>Recent jobs</h3>
-        <div id="dashboard-jobs" class="table"></div>
+        <div class="dashboard-grid">
+          <div>
+            <h3>Draft packages</h3>
+            <div id="dashboard-drafts" class="table"></div>
+          </div>
+          <div>
+            <h3>Recent jobs</h3>
+            <div id="dashboard-jobs" class="table"></div>
+          </div>
+        </div>
       </section>
 
       <section id="view-settings" class="view">
@@ -95,7 +103,7 @@
 
       <section id="view-content" class="view">
         <h2>Publish Task</h2>
-        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue. Drafts are saved in SQLite and restored after refresh. Use Resume under Recent assets to reopen a task.</p>
+        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue. Drafts are saved in SQLite. Use Packages table or Dashboard drafts to reopen.</p>
 
         <div class="wizard-steps">
           <button type="button" class="wizard-step active" data-wizard-step="1">1. Mother content</button>
@@ -136,7 +144,8 @@
           <div class="actions">
             <button type="button" id="btn-generate-packages">Generate content packages</button>
           </div>
-          <pre id="generate-result" class="generate-result"></pre>
+          <pre id="generate-result" class="generate-result" hidden></pre>
+          <div id="generate-status" class="hint" hidden></div>
         </div>
 
         <div id="wizard-step-3" class="wizard-panel">
@@ -151,10 +160,36 @@
           </div>
         </div>
 
-        <details class="content-history">
-          <summary>Recent assets &amp; variants</summary>
-          <div id="content-list" class="table"></div>
-        </details>
+        <section class="packages-section">
+          <h3>Packages</h3>
+          <form id="packages-filter-form" class="packages-filter inline-form">
+            <input name="id" type="number" placeholder="Variant ID" />
+            <input name="asset_id" type="number" placeholder="Asset ID" />
+            <input name="account_id" type="number" placeholder="Account ID" />
+            <select name="platform" id="packages-platform">
+              <option value="">All platforms</option>
+            </select>
+            <select name="status">
+              <option value="">All status</option>
+              <option value="DRAFT" selected>DRAFT</option>
+              <option value="READY">READY</option>
+            </select>
+            <input name="q" type="text" placeholder="Title / caption" />
+            <select name="sort">
+              <option value="id">Sort: ID</option>
+              <option value="asset_id">Sort: Asset</option>
+              <option value="platform">Sort: Platform</option>
+              <option value="status">Sort: Status</option>
+            </select>
+            <select name="order">
+              <option value="desc">Desc</option>
+              <option value="asc">Asc</option>
+            </select>
+            <button type="submit">Search</button>
+          </form>
+          <div id="packages-table" class="packages-table table"></div>
+          <div id="packages-pagination" class="packages-pagination"></div>
+        </section>
       </section>
 
       <section id="view-queue" class="view">
@@ -185,6 +220,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260826b"></script>
+  <script src="/static/app.js?v=20260826g"></script>
 </body>
 </html>

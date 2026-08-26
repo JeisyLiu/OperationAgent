@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.agent.mock_adapter import MockAgentAdapter
 from app.channels.base import PublishContext
+from app.channels.generic import GenericAgentChannel
 from app.channels.registry import get_channel
 from app.channels.tiktok import TikTokChannel
 from app.constants import FailureCode
@@ -43,3 +44,7 @@ def test_tiktok_channel_rejects_inactive_account(tmp_path: Path):
 
 def test_registry_returns_tiktok_channel():
     assert isinstance(get_channel("tiktok"), TikTokChannel)
+
+
+def test_registry_falls_back_to_generic_channel():
+    assert isinstance(get_channel("bilibili"), GenericAgentChannel)

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     agent_adapter: str = Field(default="browser-use", validation_alias="AGENT_ADAPTER")
+    openclaw_cmd: str | None = Field(default="openclaw", validation_alias="OPENCLAW_CMD")
+    openclaw_base_url: str | None = Field(default=None, validation_alias="OPENCLAW_BASE_URL")
+    openclaw_timeout_sec: int = Field(default=600, validation_alias="OPENCLAW_TIMEOUT_SEC")
 
     @property
     def data_dir(self) -> Path:

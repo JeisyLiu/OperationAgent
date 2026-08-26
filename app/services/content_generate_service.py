@@ -137,15 +137,12 @@ class ContentGenerateService:
             account_map[account_id] = account
 
         if batch_items:
-            content_service.delete_skill_drafts_for_accounts(
-                db,
-                asset_id=asset_id,
-                account_ids=[item.key for item in batch_items],
-            )
             batch_results = llm.chat_batch(
                 [(item.key, item.messages) for item in batch_items],
                 max_tokens=800,
             )
+            succeeded_account_ids: list[int] = []
+            pending_creates: list[tuple[object, dict]] = []
             for result in batch_results:
                 account_id = result.key
                 account = account_map.get(account_id)
@@ -167,6 +164,20 @@ class ContentGenerateService:
                     }
                     if parsed.get("section"):
                         extra["section"] = parsed["section"]
+                    pending_creates.append((account, {**parsed, "_extra": extra}))
+                    succeeded_account_ids.append(account.id)
+                except Exception as exc:
+                    errors.append(GenerateVariantError(account_id=account_id, detail=str(exc)))
+
+            # Only replace drafts for accounts that generated successfully
+            if succeeded_account_ids:
+                content_service.delete_skill_drafts_for_accounts(
+                    db,
+                    asset_id=asset_id,
+                    account_ids=succeeded_account_ids,
+                )
+            for account, parsed in pending_creates:
+                try:
                     variant = content_service.create_variant(
                         db,
                         asset_id=asset_id,
@@ -174,12 +185,12 @@ class ContentGenerateService:
                         title=parsed.get("title"),
                         caption=parsed.get("caption"),
                         hashtags=parsed.get("hashtags"),
-                        extra=extra,
+                        extra=parsed.get("_extra"),
                         status="DRAFT",
                     )
                     variants.append(variant)
                 except Exception as exc:
-                    errors.append(GenerateVariantError(account_id=account_id, detail=str(exc)))
+                    errors.append(GenerateVariantError(account_id=account.id, detail=str(exc)))
 
         return GenerateVariantsResult(variants=variants, errors=errors)
 
