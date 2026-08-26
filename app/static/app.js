@@ -29,6 +29,55 @@ document.querySelectorAll(".nav").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
 
+async function refreshReadiness() {
+  const panel = document.getElementById("readiness-panel");
+  if (!panel) return;
+  try {
+    const data = await api("/api/health/readiness");
+    panel.hidden = false;
+    panel.classList.toggle("ready", data.ready);
+    panel.classList.toggle("not-ready", !data.ready);
+    const checksHtml = (data.checks || [])
+      .map((c) => {
+        const fix = c.fix
+          ? `<div class="readiness-fix">${escapeHtml(c.fix)}</div>`
+          : "";
+        return `<div class="readiness-check ${c.status}">
+          <span class="tag">${c.status}</span>
+          <div><strong>${escapeHtml(c.id)}</strong>: ${escapeHtml(c.message)}${fix}</div>
+        </div>`;
+      })
+      .join("");
+    const guideHtml = (data.guide || [])
+      .map((s) => `<li>${escapeHtml(s)}</li>`)
+      .join("");
+    panel.innerHTML = `
+      <div class="readiness-head">
+        <h3>系统自检 ${data.ready ? "✓ 可发布" : "✗ 需修复"}</h3>
+        <span class="hint">adapter=${escapeHtml(data.adapter || "")}</span>
+      </div>
+      <div class="readiness-checks">${checksHtml}</div>
+      <ol class="readiness-guide">${guideHtml}</ol>
+    `;
+    if (!data.ready) {
+      const fails = (data.checks || []).filter((c) => c.status === "fail");
+      if (fails.length) {
+        showBootError(
+          `发布前请先修复：${fails.map((c) => c.id).join(", ")}。详见 Dashboard 自检面板。`
+        );
+      }
+    } else {
+      const boot = document.getElementById("boot-error");
+      if (boot && boot.textContent.includes("发布前请先修复")) {
+        boot.hidden = true;
+        boot.textContent = "";
+      }
+    }
+  } catch (err) {
+    console.error("readiness", err);
+  }
+}
+
 async function refreshDashboard() {
   const filterEl = document.getElementById("dashboard-package-filter");
   const filter = filterEl?.value || "DRAFT";
@@ -1487,7 +1536,7 @@ document.getElementById("job-form").onsubmit = async (e) => {
 async function refreshWorkerBar() {
   const status = await api("/api/worker/status");
   document.getElementById("worker-status").textContent =
-    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_name || "browser_use"} (${status.adapter_status})`;
+    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_name || "chrome_devtools"} (${status.adapter_status})`;
   document.getElementById("current-job").textContent =
     `Current job: ${status.current_job_id ?? "none"}`;
 }
@@ -1523,6 +1572,7 @@ async function init() {
     document.getElementById("app-version").textContent = `v${health.version}`;
     await loadPlatforms();
     await Promise.all([
+      refreshReadiness(),
       refreshDashboard(),
       refreshAccounts(),
       refreshContent(),
@@ -1532,6 +1582,7 @@ async function init() {
     ]);
     await restoreWizardSession();
     setInterval(() => {
+      refreshReadiness();
       refreshDashboard();
       refreshQueue();
       refreshWorkerBar();

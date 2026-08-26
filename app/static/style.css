@@ -100,6 +100,55 @@ button.danger { border-color: var(--bad); color: #ffb4b4; }
 button.danger:hover { background: rgba(255,107,107,.15); }
 
 .hint { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
+
+.readiness-panel {
+  margin-bottom: 1rem;
+  padding: .85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.readiness-panel.ready { border-color: var(--ok); }
+.readiness-panel.not-ready { border-color: var(--bad); }
+.readiness-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+.readiness-head h3 { margin: 0; font-size: 1rem; }
+.readiness-checks { display: grid; gap: .35rem; margin: .5rem 0; }
+.readiness-check {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: .5rem;
+  font-size: .88rem;
+  align-items: start;
+}
+.readiness-check .tag {
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.readiness-check.ok .tag { color: var(--ok); }
+.readiness-check.warn .tag { color: #e6c84a; }
+.readiness-check.fail .tag { color: var(--bad); }
+.readiness-fix {
+  color: var(--muted);
+  font-size: .82rem;
+  margin-top: .15rem;
+  white-space: pre-wrap;
+}
+.readiness-guide {
+  margin: .75rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: .85rem;
+}
+.readiness-guide li { margin: .2rem 0; }
+
 .boot-error {
   background: rgba(255,107,107,.15);
   border: 1px solid var(--bad);
