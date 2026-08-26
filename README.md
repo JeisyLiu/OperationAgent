@@ -31,11 +31,22 @@ Open **http://127.0.0.1:8000/** for the local UI.
 ```text
 APP_DATA_DIR=./data
 AGENT_ADAPTER=browser_use
+CHROME_DEVTOOLS_URL=http://127.0.0.1:9222
 ```
 
 Use `AGENT_ADAPTER=mock` for queue testing without a real browser agent.
 
-Reserved adapters (not wired in MVP): `openclaw` (stub only; returns a clear failure if selected).
+### Agent adapters
+
+| `AGENT_ADAPTER` | When to use |
+|-----------------|-------------|
+| `browser_use` | Default; autonomous browser-use + persistent profile |
+| `stagehand` | Observe-act-verify tool loop; more deterministic |
+| `chrome_devtools` | Attach to your daily Chrome (`--remote-debugging-port=9222`) |
+| `openclaw` | External OpenClaw CLI/HTTP gateway |
+| `mock` | Tests / queue dry-run |
+
+Platforms may set `preferred_adapter` in catalog (e.g. RedNote → `chrome_devtools`).
 
 ## Account Skill + multi-account workflow
 

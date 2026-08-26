@@ -23,6 +23,7 @@ class PlatformDef:
     default_persona: str | None = None
     default_skill: dict[str, Any] = field(default_factory=dict)
     publish_options: dict[str, Any] = field(default_factory=dict)
+    preferred_adapter: str | None = None
 
     @property
     def open_url(self) -> str:
@@ -53,6 +54,7 @@ def _parse_platform(data: dict[str, Any]) -> PlatformDef:
         default_persona=data.get("default_persona"),
         default_skill=dict(data.get("default_skill", {})),
         publish_options=dict(data.get("publish_options", {})),
+        preferred_adapter=data.get("preferred_adapter"),
     )
 
 

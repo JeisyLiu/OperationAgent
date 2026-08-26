@@ -7,6 +7,7 @@
   "upload_url": "https://creator.xiaohongshu.com/publish/publish",
   "enabled": true,
   "channel": null,
+  "preferred_adapter": "chrome_devtools",
   "media_types": ["video", "image"],
   "variant_schema": {
     "title": { "required": true, "max_length": 20 },

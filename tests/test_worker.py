@@ -32,3 +32,4 @@ def test_worker_status_endpoint(client: TestClient):
     body = resp.json()
     assert "running" in body
     assert "adapter_status" in body
+    assert "adapter_name" in body

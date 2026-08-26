@@ -24,7 +24,8 @@
 | 能力 | 推荐开源 | 说明 |
 |------|----------|------|
 | Agent 大脑 | **browser-use**（默认） | Python + Playwright，本地任务最贴合 |
-| Agent 备选 | Stagehand | act/observe/extract；P0 失败时切换 |
+| Agent 备选 | Stagehand 风格 tool loop | Playwright + LLM 结构化动作；`AGENT_ADAPTER=stagehand` |
+| 真 Chrome 备用 | Chrome DevTools CDP | 附着用户 Chrome；`AGENT_ADAPTER=chrome_devtools` |
 | 浏览器驱动 | Playwright | persistent Profile；多由 Agent 库携带 |
 | HTTP API | FastAPI + Uvicorn | |
 | ORM / DB | SQLAlchemy + SQLite | 禁止一上来上 PG/Redis |
@@ -34,7 +35,13 @@
 可选后补 Adapter（非 MVP 阻塞）：
 
 - Hermes  
-- OpenClaw（代码中已预留 `OpenClawAdapter` stub；`AGENT_ADAPTER=openclaw` 可加载但未接线）
+- OpenClaw（`AGENT_ADAPTER=openclaw`，CLI/HTTP 已接线）
+
+明确延期（不进当前执行层）：
+
+- MobileAdapter（ADB / UiAutomator2 / Appium）
+- Sonic 云真机设备池  
+- 触发条件：目标动作仅 App 内存在，且 Account 模型扩展为 Device Session
 
 ---
 
@@ -42,9 +49,10 @@
 
 | 项 | 原因 |
 |----|------|
-| CustomAgentAdapter（自研 LLM+工具循环） | browser-use/Stagehand 可覆盖；避免双轨 |
+| CustomAgentAdapter（自研 LLM+工具循环） | 已由 `tool_loop` + stagehand/chrome_devtools 覆盖轻量循环 |
 | OpenCV / PaddleOCR / PyAutoGUI | DOM 路径优先；降级留到 MVP 后 |
 | Hermes/OpenClaw 作为默认 | 更重、集成面更大；作第二后端即可 |
+| Sonic / ADB 云真机作为默认 | 与本机 Profile 产品路径不同；延期 |
 | 多平台 Channel 并行开工 | 先 TikTok 闭环 |
 
 ---

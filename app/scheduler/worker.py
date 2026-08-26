@@ -3,7 +3,12 @@ import logging
 from datetime import timedelta
 
 from app.agent.base import AgentStatus
-from app.agent.factory import create_agent_adapter
+from app.agent.factory import (
+    adapter_name_for_platform,
+    create_agent_adapter,
+    default_adapter_name,
+    resolve_adapter_for_platform,
+)
 from app.channels.base import PublishContext
 from app.channels.registry import get_channel
 from app.config import settings
@@ -23,6 +28,7 @@ class SchedulerWorker:
         self._task: asyncio.Task | None = None
         self._running = False
         self._adapter = create_agent_adapter()
+        self._current_adapter_name: str | None = None
         self._lock_fd: int | None = None
         self._current_job_id: int | None = None
         self._lock_warning_logged = False
@@ -101,6 +107,7 @@ class SchedulerWorker:
             "running": self._running,
             "lock_held": self._lock_fd is not None,
             "current_job_id": self._current_job_id,
+            "adapter_name": self._current_adapter_name or default_adapter_name(),
             "adapter_status": self._adapter.get_status().value,
         }
 
@@ -155,18 +162,30 @@ class SchedulerWorker:
             prompt = job_service.build_task_prompt(db, job)
             execution_dir = job_service.execution_dir(job.id)
             channel = get_channel(job.platform)
+            adapter = resolve_adapter_for_platform(job.platform)
+            self._current_adapter_name = adapter_name_for_platform(job.platform)
             ctx = PublishContext(
                 db=db,
                 job=job,
                 account=account,
                 variant=variant,
-                adapter=self._adapter,
+                adapter=adapter,
                 execution_dir=execution_dir,
                 prompt=prompt,
             )
 
-            job_service.add_log(db, job_id=job.id, step="start", message="Worker started job via channel")
-            result = await channel.publish(ctx)
+            job_service.add_log(
+                db,
+                job_id=job.id,
+                step="start",
+                message=f"Worker started job via channel (adapter={self._current_adapter_name})",
+            )
+            try:
+                result = await channel.publish(ctx)
+            finally:
+                await adapter.stop()
+                self._adapter = create_agent_adapter()
+                self._current_adapter_name = None
 
             for shot in result.screenshot_paths:
                 job_service.add_log(

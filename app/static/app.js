@@ -727,6 +727,32 @@ document.getElementById("btn-generate-packages").onclick = async () => {
   const btn = document.getElementById("btn-generate-packages");
   const statusEl = document.getElementById("generate-status");
   const resultEl = document.getElementById("generate-result");
+
+  try {
+    const models = await api("/api/llm/models").catch(() => []);
+    const enabled = (models || [])
+      .filter((m) => m.enabled)
+      .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+    const primary = enabled[0];
+    const llmInfo = primary
+      ? `主模型：${primary.alias} | ${primary.provider} | ${primary.model || "(default)"}` +
+        (primary.base_url ? `\nbase_url: ${primary.base_url}` : "") +
+        (enabled.length > 1
+          ? `\n备用：${enabled
+              .slice(1)
+              .map((m) => `${m.alias}/${m.provider}/${m.model || "?"}`)
+              .join("; ")}`
+          : "")
+      : "警告：没有启用的 LLM 配置，生成会失败。";
+    const ok = confirm(
+      `即将为 ${accountIds.length} 个账号调用 LLM 生成内容包（二次确认）：\n\n${llmInfo}\n\n确认继续？`
+    );
+    if (!ok) return;
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+
   if (btn) btn.disabled = true;
   if (statusEl) {
     statusEl.hidden = false;
@@ -816,7 +842,22 @@ document.getElementById("btn-enqueue-selected").onclick = async () => {
     alert("没有可入队的内容包。请确认平台已启用且账号为 ACTIVE。");
     return;
   }
+
   try {
+    const preview = await buildEnqueueLlmPreview(items);
+    if (preview.usesLlm) {
+      const ok = confirm(
+        `即将创建 ${items.length} 个发布任务。\n\n` +
+          `Worker 执行时会调用 LLM（二次确认）：\n` +
+          `${preview.summary}\n\n` +
+          `确认入队并允许后续任务使用上述 LLM？`
+      );
+      if (!ok) return;
+    } else {
+      const ok = confirm(`即将创建 ${items.length} 个发布任务（当前执行层为 mock，不调用 LLM）。确认？`);
+      if (!ok) return;
+    }
+
     for (const item of items) {
       if (item._variant) {
         await api(`/api/content/variants/${item.content_variant_id}`, {
@@ -853,6 +894,70 @@ document.getElementById("btn-enqueue-selected").onclick = async () => {
     alert(err.message);
   }
 };
+
+function adapterUsesLlm(adapterName) {
+  const name = String(adapterName || "mock").toLowerCase().replace(/-/g, "_");
+  return name !== "mock";
+}
+
+function resolvePlatformAdapterName(platformId) {
+  const meta = platformMeta(platformId);
+  if (meta.preferred_adapter) return String(meta.preferred_adapter).toLowerCase().replace(/-/g, "_");
+  return null;
+}
+
+async function buildEnqueueLlmPreview(items) {
+  const [models, workerStatus] = await Promise.all([
+    api("/api/llm/models").catch(() => []),
+    api("/api/worker/status").catch(() => ({})),
+  ]);
+  const globalAdapter = String(workerStatus.adapter_name || "browser_use").toLowerCase().replace(/-/g, "_");
+  const enabled = (models || [])
+    .filter((m) => m.enabled)
+    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+  const primary = enabled[0] || null;
+  const backups = enabled.slice(1);
+
+  const byAdapter = new Map();
+  for (const item of items) {
+    const adapter = resolvePlatformAdapterName(item.platform) || globalAdapter;
+    if (!byAdapter.has(adapter)) byAdapter.set(adapter, new Set());
+    byAdapter.get(adapter).add(item.platform);
+  }
+
+  const adapterLines = Array.from(byAdapter.entries()).map(
+    ([adapter, platforms]) => `· 执行层 ${adapter} ← ${Array.from(platforms).join(", ")}`
+  );
+  const usesLlm = Array.from(byAdapter.keys()).some(adapterUsesLlm);
+
+  let llmLines = [];
+  if (usesLlm) {
+    if (primary) {
+      llmLines.push(
+        `· 主模型：${primary.alias} | ${primary.provider} | ${primary.model || "(default)"}` +
+          (primary.base_url ? `\n  base_url: ${primary.base_url}` : "")
+      );
+      if (backups.length) {
+        llmLines.push(
+          `· 备用（失败自动切换）：${backups
+            .map((m) => `${m.alias}/${m.provider}/${m.model || "?"}`)
+            .join("; ")}`
+        );
+      }
+    } else {
+      llmLines.push("· 警告：当前没有启用的 LLM 配置，任务执行时可能失败。请先到 Settings 配置。");
+    }
+    if (byAdapter.has("openclaw")) {
+      llmLines.push("· OpenClaw 使用其自身模型/网关（非本机 LLM 连接池）。");
+    }
+  }
+
+  return {
+    usesLlm,
+    summary: [...adapterLines, ...llmLines].join("\n"),
+    primary,
+  };
+}
 
 async function refreshQueue() {
   const jobs = await api("/api/jobs");
@@ -1097,7 +1202,7 @@ document.getElementById("job-form").onsubmit = async (e) => {
 async function refreshWorkerBar() {
   const status = await api("/api/worker/status");
   document.getElementById("worker-status").textContent =
-    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_status}`;
+    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_name || "browser_use"} (${status.adapter_status})`;
   document.getElementById("current-job").textContent =
     `Current job: ${status.current_job_id ?? "none"}`;
 }

@@ -50,7 +50,9 @@ def test_platforms_api(client: TestClient):
     data = resp.json()
     assert any(p["id"] == "tiktok" for p in data)
     tiktok = next(p for p in data if p["id"] == "tiktok")
+    rednote = next(p for p in data if p["id"] == "rednote")
     assert tiktok["publishable"] is True
+    assert rednote["preferred_adapter"] == "chrome_devtools"
     assert tiktok["default_skill"]["tone"]
     assert tiktok["default_persona"]
     assert "publish_options" in tiktok

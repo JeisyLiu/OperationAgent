@@ -54,3 +54,9 @@ def test_bilibili_is_publishable():
 
 def test_rednote_is_publishable():
     assert is_publishable("rednote") is True
+
+
+def test_rednote_preferred_adapter():
+    platform = get_platform("rednote")
+    assert platform is not None
+    assert platform.preferred_adapter == "chrome_devtools"

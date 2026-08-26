@@ -14,6 +14,7 @@ class PlatformResponse(BaseModel):
     channel: str | None
     publishable: bool
     has_dedicated_channel: bool
+    preferred_adapter: str | None = None
     media_types: list[str]
     default_persona: str | None = None
     default_skill: AccountSkill | None = None
@@ -32,6 +33,7 @@ def to_platform_response(platform) -> PlatformResponse:
         channel=platform.channel,
         publishable=is_publishable(platform.id),
         has_dedicated_channel=has_channel(platform.channel) if platform.channel else False,
+        preferred_adapter=platform.preferred_adapter,
         media_types=platform.media_types,
         default_persona=platform.default_persona,
         default_skill=default_skill,

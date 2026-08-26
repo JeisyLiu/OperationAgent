@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     openclaw_cmd: str | None = Field(default="openclaw", validation_alias="OPENCLAW_CMD")
     openclaw_base_url: str | None = Field(default=None, validation_alias="OPENCLAW_BASE_URL")
     openclaw_timeout_sec: int = Field(default=600, validation_alias="OPENCLAW_TIMEOUT_SEC")
+    chrome_devtools_url: str = Field(
+        default="http://127.0.0.1:9222",
+        validation_alias="CHROME_DEVTOOLS_URL",
+    )
+    stagehand_mode: str = Field(default="python", validation_alias="STAGEHAND_MODE")
 
     @property
     def data_dir(self) -> Path:
