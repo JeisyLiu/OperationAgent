@@ -30,14 +30,31 @@ document.querySelectorAll(".nav").forEach((btn) => {
 });
 
 async function refreshDashboard() {
-  const [jobs, draftsResp] = await Promise.all([
+  const filterEl = document.getElementById("dashboard-package-filter");
+  const filter = filterEl?.value || "DRAFT";
+
+  const [jobs, packagesResp] = await Promise.all([
     api("/api/jobs"),
-    api("/api/content/variants?status=DRAFT&generated_by=skill&page=1&page_size=8&sort=id&order=desc").catch(
+    api("/api/content/variants?generated_by=skill&page=1&page_size=50&sort=id&order=desc").catch(
       () => ({ items: [], total: 0 })
     ),
   ]);
-  const drafts = unwrapVariantList(draftsResp);
-  const draftTotal = Array.isArray(draftsResp) ? drafts.length : Number(draftsResp.total || drafts.length);
+  const packages = unwrapVariantList(packagesResp);
+  const jobsByVariant = latestJobByVariant(jobs);
+  const enriched = packages.map((v) => ({
+    ...v,
+    lifecycle: packageLifecycle(v, jobsByVariant.get(v.id)),
+  }));
+  const filtered =
+    filter === "ALL" ? enriched : enriched.filter((v) => v.lifecycle === filter);
+
+  const lifecycleCounts = enriched.reduce(
+    (acc, v) => {
+      acc[v.lifecycle] = (acc[v.lifecycle] || 0) + 1;
+      return acc;
+    },
+    { DRAFT: 0, QUEUED: 0, RUNNING: 0, SUCCESS: 0, FAILED: 0 }
+  );
 
   const counts = jobs.reduce(
     (acc, j) => {
@@ -52,32 +69,45 @@ async function refreshDashboard() {
   );
 
   document.getElementById("dashboard-stats").innerHTML = `
-    <div class="stat"><strong>${draftTotal}</strong><span>Draft packages</span></div>
-    <div class="stat"><strong>${counts.pending}</strong><span>Queued</span></div>
-    <div class="stat"><strong>${counts.running}</strong><span>Running</span></div>
-    <div class="stat"><strong>${counts.success}</strong><span>Success</span></div>
-    <div class="stat"><strong>${counts.failed}</strong><span>Failed</span></div>
+    <div class="stat"><strong>${lifecycleCounts.DRAFT || 0}</strong><span>Draft packages</span></div>
+    <div class="stat"><strong>${lifecycleCounts.QUEUED || counts.pending}</strong><span>Queued</span></div>
+    <div class="stat"><strong>${lifecycleCounts.RUNNING || counts.running}</strong><span>Running</span></div>
+    <div class="stat"><strong>${lifecycleCounts.SUCCESS || counts.success}</strong><span>Success</span></div>
+    <div class="stat"><strong>${lifecycleCounts.FAILED || counts.failed}</strong><span>Failed</span></div>
   `;
 
   const draftsEl = document.getElementById("dashboard-drafts");
   if (draftsEl) {
-    draftsEl.innerHTML = drafts.length
-      ? drafts
-          .map(
-            (v) => `
+    draftsEl.innerHTML = filtered.length
+      ? filtered
+          .slice(0, 12)
+          .map((v) => {
+            const job = jobsByVariant.get(v.id);
+            const jobHint = job ? ` · job #${job.id}` : "";
+            return `
         <div class="row">
           <div>包 #${v.id}</div>
           <div>${escapeHtml(platformLabel(v.platform))}</div>
-          <div>${escapeHtml((v.title || v.caption || "").slice(0, 40))}</div>
+          <div class="status-${String(v.lifecycle).toLowerCase()}">${escapeHtml(v.lifecycle)}${jobHint}</div>
+          <div>${escapeHtml((v.title || v.caption || "").slice(0, 36))}</div>
           <div class="actions">
             <button type="button" data-dash-open-package="${v.id}">Open</button>
+            ${job ? `<button type="button" data-dash-history="${job.id}">Logs</button>` : ""}
           </div>
-        </div>`
-          )
+        </div>`;
+          })
           .join("")
-      : `<div class="hint">暂无草稿内容包。去 Content 生成即可。</div>`;
+      : `<div class="hint">当前筛选（${escapeHtml(filter)}）下暂无内容包。</div>`;
     draftsEl.querySelectorAll("[data-dash-open-package]").forEach((btn) => {
       btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
+    });
+    draftsEl.querySelectorAll("[data-dash-history]").forEach((btn) => {
+      btn.onclick = () => {
+        showView("history");
+        const input = document.getElementById("history-job-id");
+        if (input) input.value = btn.dataset.dashHistory;
+        document.getElementById("load-history")?.click();
+      };
     });
   }
 
@@ -103,7 +133,7 @@ async function refreshDashboard() {
   document.querySelectorAll("#dashboard-jobs [data-dash-open-package]").forEach((btn) => {
     btn.onclick = () => openPackageVariant(Number(btn.dataset.dashOpenPackage)).catch((e) => alert(e.message));
   });
-  document.querySelectorAll("[data-dash-history]").forEach((btn) => {
+  document.querySelectorAll("#dashboard-jobs [data-dash-history]").forEach((btn) => {
     btn.onclick = () => {
       const jobId = btn.dataset.dashHistory;
       showView("history");
@@ -112,6 +142,30 @@ async function refreshDashboard() {
       document.getElementById("load-history")?.click();
     };
   });
+}
+
+function latestJobByVariant(jobs) {
+  const map = new Map();
+  for (const job of jobs || []) {
+    const vid = job.content_variant_id;
+    if (vid == null) continue;
+    const prev = map.get(vid);
+    if (!prev || job.id > prev.id) map.set(vid, job);
+  }
+  return map;
+}
+
+function packageLifecycle(variant, job) {
+  if (job) {
+    if (["PENDING", "CLAIMED", "RETRY"].includes(job.status)) return "QUEUED";
+    if (["EXECUTING", "VERIFYING"].includes(job.status)) return "RUNNING";
+    if (job.status === "SUCCESS") return "SUCCESS";
+    if (["FAILED", "DEAD"].includes(job.status)) return "FAILED";
+    if (job.status === "CANCELLED") return variant?.status === "DRAFT" ? "DRAFT" : "READY";
+  }
+  if (variant?.status === "DRAFT") return "DRAFT";
+  if (variant?.status === "READY") return "QUEUED";
+  return String(variant?.status || "DRAFT").toUpperCase();
 }
 
 let platformCatalog = [];
@@ -1209,6 +1263,10 @@ async function refreshWorkerBar() {
 
 document.getElementById("btn-pause").onclick = () => api("/api/worker/pause", { method: "POST" }).then(refreshWorkerBar);
 document.getElementById("btn-stop").onclick = () => api("/api/worker/stop", { method: "POST" }).then(refreshWorkerBar);
+
+document.getElementById("dashboard-package-filter")?.addEventListener("change", () => {
+  refreshDashboard().catch((e) => console.error(e));
+});
 
 document.querySelectorAll(".wizard-step").forEach((btn) => {
   btn.addEventListener("click", () => {

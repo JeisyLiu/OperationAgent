@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260826i" />
+  <link rel="stylesheet" href="/static/style.css?v=20260826j" />
 </head>
 <body>
   <div class="layout">
@@ -28,7 +28,17 @@
         <div class="stats" id="dashboard-stats"></div>
         <div class="dashboard-grid">
           <div>
-            <h3>Draft packages</h3>
+            <div class="dashboard-panel-head">
+              <h3>Packages</h3>
+              <select id="dashboard-package-filter" aria-label="Package status filter">
+                <option value="DRAFT" selected>Draft</option>
+                <option value="QUEUED">Queued</option>
+                <option value="RUNNING">Running</option>
+                <option value="SUCCESS">Published</option>
+                <option value="FAILED">Failed</option>
+                <option value="ALL">All</option>
+              </select>
+            </div>
             <div id="dashboard-drafts" class="table"></div>
           </div>
           <div>
@@ -220,6 +230,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260826i"></script>
+  <script src="/static/app.js?v=20260826j"></script>
 </body>
 </html>

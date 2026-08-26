@@ -418,6 +418,20 @@ pre {
   margin: 0 0 .65rem;
   font-size: 1rem;
 }
+.dashboard-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .65rem;
+}
+.dashboard-panel-head h3 {
+  margin: 0;
+}
+.dashboard-panel-head select {
+  width: auto;
+  min-width: 8rem;
+}
 #generate-status {
   margin-top: .75rem;
   white-space: pre-wrap;
