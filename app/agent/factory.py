@@ -11,9 +11,9 @@ KNOWN_ADAPTERS = frozenset(
     {"browser_use", "browseruse", "stagehand", "chrome_devtools", "openclaw", "mock"}
 )
 
-# Infra failure degrade chain: browser_use → stagehand → chrome_devtools
-FALLBACK_CHAIN = ("browser_use", "stagehand", "chrome_devtools")
-FALLBACK_ADAPTER = "chrome_devtools"  # final hop; kept for compatibility
+# Infra failure degrade chain: browser_use → stagehand (profile-backed)
+FALLBACK_CHAIN = ("browser_use", "stagehand")
+FALLBACK_ADAPTER = "stagehand"
 
 
 def normalize_adapter_name(name: str | None) -> str:

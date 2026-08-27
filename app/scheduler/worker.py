@@ -46,28 +46,81 @@ class SchedulerWorker:
     def _lock_path(self):
         return settings.data_dir / ".worker.lock"
 
-    def _acquire_lock(self) -> bool:
+    def _pid_alive(self, pid: int) -> bool:
         import os
-        from pathlib import Path
+
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+        except SystemError:
+            return False
+
+    def _read_lock_pid(self) -> int | None:
+        path = self._lock_path()
+        if not path.exists():
+            return None
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+            return int(raw) if raw else None
+        except (OSError, ValueError):
+            return None
+
+    def _clear_stale_lock(self) -> bool:
+        """Remove lock file if missing PID or holder process is dead. Returns True if cleared."""
+        import os
+
+        path = self._lock_path()
+        if not path.exists():
+            return True
+        pid = self._read_lock_pid()
+        if pid is not None and self._pid_alive(pid) and pid != os.getpid():
+            return False
+        try:
+            path.unlink(missing_ok=True)
+            logger.info("Cleared stale worker lock (pid=%s)", pid)
+            return True
+        except OSError:
+            logger.exception("Failed to clear worker lock at %s", path)
+            return False
+
+    def _acquire_lock(self, *, clear_stale: bool = False) -> bool:
+        import os
 
         path = self._lock_path()
         path.parent.mkdir(parents=True, exist_ok=True)
+        if clear_stale:
+            self._clear_stale_lock()
         try:
             self._lock_fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(self._lock_fd, str(os.getpid()).encode())
             self._lock_warning_logged = False
             return True
         except FileExistsError:
+            if not clear_stale and self._clear_stale_lock():
+                try:
+                    self._lock_fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.write(self._lock_fd, str(os.getpid()).encode())
+                    self._lock_warning_logged = False
+                    return True
+                except FileExistsError:
+                    pass
             if not self._lock_warning_logged:
-                logger.warning("Worker lock already held; another worker may be running")
+                holder = self._read_lock_pid()
+                logger.warning(
+                    "Worker lock already held by pid=%s; another worker may be running",
+                    holder,
+                )
                 self._lock_warning_logged = True
             return False
 
     def _release_lock(self) -> None:
-        import os
-        from pathlib import Path
-
         if self._lock_fd is not None:
+            import os
+
             os.close(self._lock_fd)
             self._lock_fd = None
         lock_path = self._lock_path()
@@ -80,11 +133,32 @@ class SchedulerWorker:
     async def start(self) -> None:
         if self._running:
             return
-        if not self._acquire_lock():
+        if not self._acquire_lock(clear_stale=True):
             return
         self._running = True
         self._task = asyncio.create_task(self._loop())
         logger.info("Scheduler worker started")
+
+    async def ensure_running(self) -> tuple[bool, str]:
+        """Self-heal: clear stale lock if needed and start worker. Safe to call repeatedly."""
+        if self._running and self._lock_fd is not None:
+            return True, "发布队列已在运行"
+
+        if self._running and self._lock_fd is None:
+            return True, "发布队列已在运行"
+
+        if not self._acquire_lock(clear_stale=True):
+            holder = self._read_lock_pid()
+            return (
+                False,
+                f"另一个运行中的实例占用了发布队列（pid={holder}）。请关闭其他窗口后点「重试修复」。",
+            )
+
+        self._running = True
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._loop())
+        logger.info("Scheduler worker ensured running")
+        return True, "已自动恢复发布队列"
 
     async def stop(self) -> None:
         self._running = False

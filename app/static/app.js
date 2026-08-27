@@ -37,44 +37,123 @@ async function refreshReadiness() {
     panel.hidden = false;
     panel.classList.toggle("ready", data.ready);
     panel.classList.toggle("not-ready", !data.ready);
-    const checksHtml = (data.checks || [])
-      .map((c) => {
-        const fix = c.fix
-          ? `<div class="readiness-fix">${escapeHtml(c.fix)}</div>`
-          : "";
-        return `<div class="readiness-check ${c.status}">
-          <span class="tag">${c.status}</span>
-          <div><strong>${escapeHtml(c.id)}</strong>: ${escapeHtml(c.message)}${fix}</div>
-        </div>`;
-      })
-      .join("");
-    const guideHtml = (data.guide || [])
-      .map((s) => `<li>${escapeHtml(s)}</li>`)
-      .join("");
-    panel.innerHTML = `
-      <div class="readiness-head">
-        <h3>系统自检 ${data.ready ? "✓ 可发布" : "✗ 需修复"}</h3>
-        <span class="hint">adapter=${escapeHtml(data.adapter || "")}</span>
-      </div>
-      <div class="readiness-checks">${checksHtml}</div>
-      <ol class="readiness-guide">${guideHtml}</ol>
-    `;
-    if (!data.ready) {
-      const fails = (data.checks || []).filter((c) => c.status === "fail");
-      if (fails.length) {
-        showBootError(
-          `发布前请先修复：${fails.map((c) => c.id).join(", ")}。详见 Dashboard 自检面板。`
-        );
-      }
-    } else {
+    panel.classList.toggle("collapsed", data.ready);
+
+    const fails = (data.checks || []).filter((c) => c.status === "fail");
+    const warns = (data.checks || []).filter((c) => c.status === "warn");
+
+    if (data.ready) {
+      panel.innerHTML = `
+        <div class="readiness-head">
+          <h3>就绪</h3>
+          <button type="button" id="btn-readiness-expand" class="readiness-toggle">展开详情</button>
+        </div>
+        <div class="readiness-body" hidden>
+          ${renderReadinessChecks(data.checks)}
+        </div>
+      `;
+      document.getElementById("btn-readiness-expand")?.addEventListener("click", () => {
+        const body = panel.querySelector(".readiness-body");
+        const btn = document.getElementById("btn-readiness-expand");
+        if (!body || !btn) return;
+        const hidden = body.hidden;
+        body.hidden = !hidden;
+        btn.textContent = hidden ? "收起" : "展开详情";
+      });
       const boot = document.getElementById("boot-error");
-      if (boot && boot.textContent.includes("发布前请先修复")) {
+      if (boot && boot.textContent.includes("发布前")) {
         boot.hidden = true;
         boot.textContent = "";
       }
+      return;
+    }
+
+    panel.innerHTML = `
+      <div class="readiness-head">
+        <h3>需要处理 ${fails.length ? fails.length + " 项" : warns.length + " 项提示"}</h3>
+        <button type="button" id="btn-readiness-heal">重试修复</button>
+      </div>
+      <div id="readiness-heal-msg" class="readiness-fix" hidden></div>
+      <div class="readiness-body">
+        ${renderReadinessChecks(data.checks)}
+        <ol class="readiness-guide">${(data.guide || []).map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
+      </div>
+    `;
+    document.getElementById("btn-readiness-heal")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget;
+      const msgEl = document.getElementById("readiness-heal-msg");
+      btn.disabled = true;
+      btn.textContent = "修复中…";
+      if (msgEl) {
+        msgEl.hidden = false;
+        msgEl.textContent = "正在自动清理并恢复发布队列…";
+      }
+      try {
+        const result = await api("/api/health/heal", { method: "POST" });
+        const actions = result.actions || [];
+        const summary = actions.map((a) => a.message).filter(Boolean).join("；") || "已完成检查";
+        if (msgEl) msgEl.textContent = summary;
+        await refreshReadiness();
+        if (!result.ready && msgEl) {
+          // Panel re-rendered; show brief feedback via alert if still failing hard
+          const stillFail = (result.checks || []).filter((c) => c.status === "fail");
+          if (stillFail.length) {
+            alert(summary + "\n\n仍有问题：" + stillFail.map((c) => readinessLabel(c.id)).join("、"));
+          }
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "重试修复";
+        if (msgEl) msgEl.textContent = err.message;
+        alert("修复失败：" + err.message);
+      }
+    });
+    if (fails.length) {
+      showBootError(`请先处理：${fails.map((c) => readinessLabel(c.id)).join("、")}`);
     }
   } catch (err) {
     console.error("readiness", err);
+  }
+}
+
+function readinessLabel(id) {
+  const labels = {
+    database: "数据库",
+    worker: "发布队列",
+    llm: "LLM 配置",
+    active_accounts: "账号启用",
+    adapter: "发布引擎",
+    windows_event_loop: "运行环境",
+    chrome_cdp: "Chrome 连接",
+  };
+  return labels[id] || id;
+}
+
+function renderReadinessChecks(checks) {
+  return `<div class="readiness-checks">${(checks || [])
+    .map((c) => {
+      const fix = c.fix ? `<div class="readiness-fix">${escapeHtml(c.fix)}</div>` : "";
+      return `<div class="readiness-check ${c.status}">
+        <span class="tag">${c.status}</span>
+        <div><strong>${escapeHtml(readinessLabel(c.id))}</strong>：${escapeHtml(c.message)}${fix}</div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+async function loginAndActivate(accountId) {
+  try {
+    const opened = await api(`/api/accounts/${accountId}/login-and-activate`, { method: "POST" });
+    const ok = confirm(
+      (opened.message || "浏览器已打开。") + "\n\n完成登录后点「确定」启用账号；未完成请点「取消」。"
+    );
+    if (!ok) return;
+    await api(`/api/accounts/${accountId}/mark-active`, { method: "POST" });
+    await refreshAccounts();
+    await refreshReadiness();
+    alert("账号已启用，可以发布内容。");
+  } catch (err) {
+    alert(err.message);
   }
 }
 
@@ -392,8 +471,7 @@ async function refreshAccounts() {
         <div>${a.status}</div>
         <div class="actions">
           <button type="button" data-skill="${a.id}">Edit skill</button>
-          <button type="button" data-open="${a.id}">Open profile</button>
-          <button type="button" data-active="${a.id}">Mark active</button>
+          <button type="button" data-login="${a.id}">登录并启用</button>
           <button type="button" class="danger" data-delete="${a.id}">Delete</button>
         </div>
       </div>`
@@ -407,15 +485,8 @@ async function refreshAccounts() {
   document.querySelectorAll("[data-skill]").forEach((btn) => {
     btn.onclick = () => openSkillEditor(Number(btn.dataset.skill));
   });
-  document.querySelectorAll("[data-open]").forEach((btn) => {
-    btn.onclick = () => api(`/api/accounts/${btn.dataset.open}/open-profile`, { method: "POST" })
-      .then((r) => alert(r.message || "Profile launch requested"))
-      .catch((e) => alert(e.message));
-  });
-  document.querySelectorAll("[data-active]").forEach((btn) => {
-    btn.onclick = () => api(`/api/accounts/${btn.dataset.active}/mark-active`, { method: "POST" })
-      .then(() => refreshAccounts())
-      .catch((e) => alert(e.message));
+  document.querySelectorAll("[data-login]").forEach((btn) => {
+    btn.onclick = () => loginAndActivate(Number(btn.dataset.login));
   });
   document.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.onclick = () => {
@@ -1536,7 +1607,7 @@ document.getElementById("job-form").onsubmit = async (e) => {
 async function refreshWorkerBar() {
   const status = await api("/api/worker/status");
   document.getElementById("worker-status").textContent =
-    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_name || "chrome_devtools"} (${status.adapter_status})`;
+    `Worker: ${status.running ? "running" : "stopped"} | adapter=${status.adapter_name || "stagehand"} (${status.adapter_status})`;
   document.getElementById("current-job").textContent =
     `Current job: ${status.current_job_id ?? "none"}`;
 }

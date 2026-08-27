@@ -117,6 +117,24 @@ def delete_account(account_id: int, db: Session = Depends(get_db)) -> dict[str, 
 
 @router.post("/{account_id}/open-profile", response_model=AccountActionResponse)
 async def open_profile(account_id: int, db: Session = Depends(get_db)) -> AccountActionResponse:
+    return await _open_profile_for_account(account_id, db)
+
+
+@router.post("/{account_id}/login-and-activate", response_model=AccountActionResponse)
+async def login_and_activate(account_id: int, db: Session = Depends(get_db)) -> AccountActionResponse:
+    """Open browser for first-time login; client confirms then calls mark-active."""
+    return await _open_profile_for_account(
+        account_id,
+        db,
+        message="浏览器已打开。请完成登录（含验证码）后，在应用中点击确认以启用账号。",
+    )
+
+
+async def _open_profile_for_account(
+    account_id: int,
+    db: Session,
+    message: str = "Browser opened. Complete login manually, then call mark-active.",
+) -> AccountActionResponse:
     account = account_service.get(db, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -148,10 +166,7 @@ async def open_profile(account_id: int, db: Session = Depends(get_db)) -> Accoun
 
     _profile_runtimes[account_id] = runtime
 
-    return AccountActionResponse(
-        status="opened",
-        message="Browser opened. Complete login manually, then call mark-active.",
-    )
+    return AccountActionResponse(status="opened", message=message)
 
 
 @router.post("/{account_id}/mark-active", response_model=AccountResponse)
@@ -177,7 +192,7 @@ def check_session(account_id: int, db: Session = Depends(get_db)) -> SessionChec
     message = (
         "Account is active; profile should retain session."
         if logged_in
-        else "Account not active. Open profile and complete login, then mark-active."
+        else "Account not active. Use「登录并启用」to complete login."
     )
     return SessionCheckResponse(
         logged_in=logged_in,

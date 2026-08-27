@@ -33,3 +33,26 @@ def test_worker_status_endpoint(client: TestClient):
     assert "running" in body
     assert "adapter_status" in body
     assert "adapter_name" in body
+
+
+def test_worker_clears_stale_lock_and_starts(tmp_path, monkeypatch):
+    import asyncio
+
+    from app.config import settings
+    from app.scheduler.worker import SchedulerWorker
+
+    monkeypatch.setattr(settings, "app_data_dir", tmp_path)
+    lock = tmp_path / ".worker.lock"
+    lock.write_text("99999999", encoding="utf-8")  # almost certainly dead pid
+
+    w = SchedulerWorker()
+
+    async def run():
+        ok, msg = await w.ensure_running()
+        assert ok is True
+        assert w.get_status()["running"] is True
+        await w.stop()
+        return msg
+
+    msg = asyncio.get_event_loop().run_until_complete(run())
+    assert "队列" in msg or "运行" in msg

@@ -35,15 +35,26 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.agent.factory import default_adapter_name
     from app.db.models import Base
     from app.db.session import engine
+    from app.services.chrome_manager import ensure_cdp_ready, shutdown_managed_chrome
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     run_migrations()
+
+    if default_adapter_name() == "chrome_devtools":
+        ok, msg = ensure_cdp_ready()
+        if ok:
+            logging.getLogger(__name__).info("CDP ready: %s", msg)
+        else:
+            logging.getLogger(__name__).warning("CDP not ready at startup: %s", msg)
+
     await worker.start()
     yield
     await worker.stop()
+    shutdown_managed_chrome()
 
 
 app = FastAPI(

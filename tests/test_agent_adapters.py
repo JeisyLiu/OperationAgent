@@ -22,23 +22,22 @@ def test_create_chrome_devtools_adapter():
     assert isinstance(adapter, ChromeDevToolsAdapter)
 
 
-def test_default_adapter_is_chrome_devtools(monkeypatch):
+def test_default_adapter_is_stagehand(monkeypatch):
     from app.config import settings
 
-    settings.agent_adapter = "chrome_devtools"
-    assert default_adapter_name() == "chrome_devtools"
-    assert isinstance(create_agent_adapter(), ChromeDevToolsAdapter)
+    settings.agent_adapter = "stagehand"
+    assert default_adapter_name() == "stagehand"
+    assert isinstance(create_agent_adapter(), StagehandAdapter)
 
 
 def test_should_fallback_to_chrome_on_empty_or_playwright_error():
     from app.agent.factory import is_infra_failure, next_fallback_adapter, should_fallback_to_chrome
 
     assert next_fallback_adapter("browser_use") == "stagehand"
-    assert next_fallback_adapter("stagehand") == "chrome_devtools"
-    assert next_fallback_adapter("chrome_devtools") is None
+    assert next_fallback_adapter("stagehand") is None
     assert should_fallback_to_chrome("browser_use", "", "UNKNOWN")
-    assert should_fallback_to_chrome("stagehand", "NotImplementedError: spawn", None)
-    assert not should_fallback_to_chrome("chrome_devtools", "", None)
+    assert not should_fallback_to_chrome("stagehand", "NotImplementedError: spawn", None)
+    assert not should_fallback_to_chrome("stagehand", "", None)
     assert not should_fallback_to_chrome("browser_use", "Please sign in to continue", "LOGIN_REQUIRED")
     assert is_infra_failure("", None)
     assert not is_infra_failure("captcha blocked", "CAPTCHA_BLOCKED")

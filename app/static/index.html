@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260827a" />
+  <link rel="stylesheet" href="/static/style.css?v=20260827b" />
 </head>
 <body>
   <div class="layout">
@@ -87,7 +87,7 @@
 
       <section id="view-accounts" class="view">
         <h2>Accounts</h2>
-        <p class="hint">Choose a platform from the catalog, then Open profile → login → Mark active.</p>
+        <p class="hint">选择平台并添加账号，然后点击「登录并启用」完成一次平台登录即可发布。</p>
         <form id="account-form" class="inline-form">
           <select name="platform" id="account-platform" required>
             <option value="">Loading platforms…</option>
@@ -114,7 +114,7 @@
 
       <section id="view-content" class="view">
         <h2>Publish Task</h2>
-        <p class="hint">Create one mother post, generate per-account packages, then review and enqueue. Default execution: chrome_devtools. Infra fallback chain: browser_use → stagehand → chrome_devtools. Start Chrome with --remote-debugging-port=9222 before publish.</p>
+        <p class="hint">创建母帖 → 为各账号生成内容包 → 审核并入队。首次使用请先完成账号「登录并启用」。</p>
 
         <div class="wizard-steps">
           <button type="button" class="wizard-step active" data-wizard-step="1">1. Mother content</button>
@@ -231,6 +231,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260827a"></script>
+  <script src="/static/app.js?v=20260827c"></script>
 </body>
 </html>

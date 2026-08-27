@@ -36,32 +36,32 @@ class ReadinessCheck:
 def _check_database(db: Session) -> ReadinessCheck:
     try:
         db.execute(text("SELECT 1"))
-        return ReadinessCheck("database", CheckStatus.OK, "Database reachable")
+        return ReadinessCheck("database", CheckStatus.OK, "数据库正常")
     except Exception as exc:
         return ReadinessCheck(
             "database",
             CheckStatus.FAIL,
-            f"Database error: {exc}",
-            fix="Run `python scripts/init_db.py` and restart the server.",
+            f"数据库不可用：{exc}",
+            fix="重启应用；若仍失败，删除 data/app.db 后重新启动。",
         )
 
 
 def _check_worker() -> ReadinessCheck:
     status = worker.get_status()
     if status.get("running") and status.get("lock_held"):
-        return ReadinessCheck("worker", CheckStatus.OK, "Worker running with exclusive lock")
+        return ReadinessCheck("worker", CheckStatus.OK, "发布队列已就绪")
     if status.get("running"):
         return ReadinessCheck(
             "worker",
             CheckStatus.WARN,
-            "Worker running but lock not held — another instance may conflict",
-            fix="Stop duplicate uvicorn processes; only one server should run.",
+            "队列在运行，但锁状态异常",
+            fix="点「重试修复」，程序会自动整理。",
         )
     return ReadinessCheck(
         "worker",
         CheckStatus.FAIL,
-        "Worker not running (lock held by another process or failed to start)",
-        fix="Stop other OperationAgent instances, delete data/.worker.lock if stale, restart server.",
+        "发布队列未启动",
+        fix="点「重试修复」，程序会自动清理残留锁并拉起队列。",
     )
 
 
@@ -69,13 +69,13 @@ def _check_llm(db: Session) -> ReadinessCheck:
     enabled = llm_model_service.list_enabled_configs(db)
     if enabled:
         names = ", ".join(c.alias for c in enabled[:3])
-        suffix = f" (+{len(enabled) - 3} more)" if len(enabled) > 3 else ""
-        return ReadinessCheck("llm", CheckStatus.OK, f"{len(enabled)} LLM config(s) enabled: {names}{suffix}")
+        suffix = f" 等 {len(enabled)} 套" if len(enabled) > 1 else ""
+        return ReadinessCheck("llm", CheckStatus.OK, f"已配置 LLM：{names}{suffix}")
     return ReadinessCheck(
         "llm",
         CheckStatus.WARN,
-        "No enabled LLM configs — content generation and rewrite-after-republish need Settings",
-        fix="Settings → add at least one enabled LLM model with a valid API key.",
+        "未配置 LLM（手动上传内容仍可发布）",
+        fix="Settings → 添加并启用至少一套模型（用于 AI 生成与重写）。",
     )
 
 
@@ -86,20 +86,20 @@ def _check_active_accounts(db: Session) -> ReadinessCheck:
         return ReadinessCheck(
             "active_accounts",
             CheckStatus.OK,
-            f"{len(active)} ACTIVE account(s) ready for publish",
+            f"{len(active)} 个账号已启用，可发布",
         )
     if accounts:
         return ReadinessCheck(
             "active_accounts",
             CheckStatus.WARN,
-            f"{len(accounts)} account(s) exist but none ACTIVE",
-            fix="Accounts → Open profile → log in → Mark active.",
+            f"已有 {len(accounts)} 个账号，但尚未启用",
+            fix="Accounts → 点击「登录并启用」，完成平台登录后即可发布。",
         )
     return ReadinessCheck(
         "active_accounts",
         CheckStatus.WARN,
-        "No accounts yet",
-        fix="Accounts → add a platform account, open profile, log in, mark active.",
+        "还没有账号",
+        fix="Accounts → 添加平台账号 →「登录并启用」。",
     )
 
 
@@ -109,34 +109,45 @@ def _check_adapter() -> ReadinessCheck:
         return ReadinessCheck(
             "adapter",
             CheckStatus.WARN,
-            "AGENT_ADAPTER=mock — jobs will not use a real browser",
-            fix="Set AGENT_ADAPTER=chrome_devtools in .env for real publish.",
+            "当前为测试模式，不会真实发布",
+            fix="在 .env 中设置 AGENT_ADAPTER=stagehand 后重启。",
         )
-    return ReadinessCheck("adapter", CheckStatus.OK, f"Default adapter: {name}")
+    if name == "stagehand":
+        return ReadinessCheck("adapter", CheckStatus.OK, "发布将使用已登录的浏览器配置（与登录同一会话）")
+    if name == "chrome_devtools":
+        return ReadinessCheck("adapter", CheckStatus.OK, "发布将附着到 Chrome 调试端口")
+    return ReadinessCheck("adapter", CheckStatus.OK, f"执行方式：{name}")
 
 
 def _check_windows_event_loop() -> ReadinessCheck | None:
     if sys.platform != "win32":
         return None
-    policy = os.environ.get("UVICORN_RELOAD", "")
-    # Heuristic: reload child processes often lack Proactor policy set in main.py
-    if policy == "1" or "--reload" in " ".join(sys.argv):
+    if os.environ.get("UVICORN_RELOAD") == "1" or "--reload" in " ".join(sys.argv):
         return ReadinessCheck(
             "windows_event_loop",
             CheckStatus.FAIL,
-            "uvicorn --reload detected on Windows — Playwright subprocess may fail",
-            fix="Restart without --reload: uvicorn app.main:app --host 127.0.0.1 --port 8000",
+            "检测到开发热重载模式，Windows 下可能导致浏览器启动失败",
+            fix="请使用一键启动：python -m app.launcher 或 scripts/start.ps1",
         )
-    return ReadinessCheck(
-        "windows_event_loop",
-        CheckStatus.OK,
-        "Windows Proactor event loop policy active (required for Playwright)",
-    )
+    return ReadinessCheck("windows_event_loop", CheckStatus.OK, "Windows 浏览器环境正常")
 
 
-def _check_chrome_cdp() -> ReadinessCheck | None:
+def _check_chrome_cdp(*, auto_heal: bool = False) -> ReadinessCheck | None:
     if default_adapter_name() != "chrome_devtools":
         return None
+
+    if auto_heal:
+        from app.services.chrome_manager import ensure_cdp_ready
+
+        ok, heal_msg = ensure_cdp_ready()
+        if not ok:
+            return ReadinessCheck(
+                "chrome_cdp",
+                CheckStatus.FAIL,
+                heal_msg,
+                fix="请安装 Google Chrome 后点击「重试修复」。",
+            )
+
     url = settings.chrome_devtools_url.rstrip("/")
     try:
         with httpx.Client(timeout=2.0) as client:
@@ -144,38 +155,31 @@ def _check_chrome_cdp() -> ReadinessCheck | None:
             resp.raise_for_status()
             data = resp.json()
             browser = data.get("Browser", "Chrome")
-            return ReadinessCheck("chrome_cdp", CheckStatus.OK, f"Chrome DevTools reachable ({browser})")
+            return ReadinessCheck("chrome_cdp", CheckStatus.OK, f"Chrome 已连接（{browser}）")
     except Exception as exc:
         return ReadinessCheck(
             "chrome_cdp",
             CheckStatus.FAIL,
-            f"Cannot reach Chrome DevTools at {url}: {exc}",
-            fix=(
-                'Start Chrome with remote debugging, e.g.\n'
-                '  scripts/start_chrome_cdp.ps1\n'
-                'or: chrome.exe --remote-debugging-port=9222 --user-data-dir="%TEMP%\\oa-chrome"'
-            ),
+            f"无法连接 Chrome：{exc}",
+            fix="点击「重试修复」，程序会自动启动 Chrome。",
         )
 
 
 def _first_time_guide(checks: list[ReadinessCheck]) -> list[str]:
     steps = [
-        "1. Copy `.env.example` → `.env` (default AGENT_ADAPTER=chrome_devtools).",
-        "2. Start server: `uvicorn app.main:app --host 127.0.0.1 --port 8000` (no --reload on Windows).",
-        "3. Settings → add enabled LLM config (optional for queue-only tests).",
-        "4. Start Chrome CDP: `scripts/start_chrome_cdp.ps1` (or equivalent command).",
-        "5. Accounts → Open profile → log in manually → Mark active.",
-        "6. Content → upload asset → create variant → Queue → wait for SUCCESS.",
+        "添加账号 →「登录并启用」完成一次平台登录",
+        "上传内容 → 创建变体 → 加入队列",
+        "等待发布成功，可在 History 查看步骤与截图",
     ]
     failing = {c.id for c in checks if c.status == CheckStatus.FAIL}
-    if "chrome_cdp" in failing:
-        steps.insert(3, "→ Fix CDP first: Chrome must be running with --remote-debugging-port=9222")
-    if "worker" in failing:
-        steps.insert(2, "→ Fix worker: stop duplicate servers / remove stale data/.worker.lock")
+    if "active_accounts" in {c.id for c in checks if c.status == CheckStatus.WARN}:
+        steps.insert(0, "先完成账号「登录并启用」")
+    if "chrome_cdp" in failing or "worker" in failing:
+        steps.insert(0, "点「重试修复」，程序会自动处理")
     return steps
 
 
-def run_readiness(db: Session) -> dict:
+def run_readiness(db: Session, *, auto_heal: bool = False) -> dict:
     checks: list[ReadinessCheck] = [
         _check_database(db),
         _check_worker(),
@@ -186,7 +190,7 @@ def run_readiness(db: Session) -> dict:
     win = _check_windows_event_loop()
     if win:
         checks.append(win)
-    cdp = _check_chrome_cdp()
+    cdp = _check_chrome_cdp(auto_heal=auto_heal)
     if cdp:
         checks.append(cdp)
 
@@ -208,3 +212,22 @@ def run_readiness(db: Session) -> dict:
         ],
         "guide": _first_time_guide(checks),
     }
+
+
+async def heal_and_readiness(db: Session) -> dict:
+    """Auto-fix worker lock / CDP, then return readiness + action log."""
+    from app.services.chrome_manager import ensure_cdp_ready
+
+    actions: list[dict] = []
+
+    ok, msg = await worker.ensure_running()
+    actions.append({"id": "worker", "ok": ok, "message": msg})
+
+    if default_adapter_name() == "chrome_devtools":
+        cdp_ok, cdp_msg = ensure_cdp_ready()
+        actions.append({"id": "chrome_cdp", "ok": cdp_ok, "message": cdp_msg})
+
+    report = run_readiness(db, auto_heal=False)
+    report["actions"] = actions
+    report["healed"] = all(a["ok"] for a in actions) if actions else True
+    return report
