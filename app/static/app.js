@@ -1272,14 +1272,8 @@ function collectReviewEdits() {
   return Object.values(byId);
 }
 
-function isPromoPlatform(platformId) {
-  return platformId === "rednote" || platformId === "bilibili";
-}
-
 function promoButtonHtml(variant) {
-  const enabled = isPromoPlatform(variant.platform);
-  const title = enabled ? "按母帖标签搜索并生成评论草稿" : "评论推广仅支持小红书与 B 站";
-  return `<button type="button" data-promo-variant="${variant.id}" data-promo-platform="${escapeHtml(variant.platform || "")}" title="${escapeHtml(title)}">评论推广</button>`;
+  return `<button type="button" data-promo-variant="${variant.id}" data-promo-platform="${escapeHtml(variant.platform || "")}" title="按母帖标签搜索并生成评论草稿">评论推广</button>`;
 }
 
 function wireAccountSkillLinks(container) {
@@ -1307,11 +1301,6 @@ function wirePromoButtons(container) {
     btn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const platform = btn.dataset.promoPlatform || "";
-      if (!isPromoPlatform(platform)) {
-        alert("评论推广仅支持小红书与 B 站");
-        return;
-      }
       openCommentPromoModal(Number(btn.dataset.promoVariant)).catch((err) => alert(err.message || String(err)));
     };
   });
@@ -1439,8 +1428,11 @@ function updatePromoToolbar(run) {
     else startBtn.removeAttribute("hidden");
   }
   if (abortBtn) {
-    abortBtn.hidden = !active || run.status === "cancelling";
-    if (!active || run.status === "cancelling") abortBtn.setAttribute("hidden", "");
+    const showAbort = active;
+    abortBtn.hidden = !showAbort;
+    abortBtn.disabled = false;
+    abortBtn.textContent = run.status === "cancelling" ? "强制结束" : "中止";
+    if (!showAbort) abortBtn.setAttribute("hidden", "");
     else abortBtn.removeAttribute("hidden");
   }
   if (retryBtn) {
@@ -1458,7 +1450,7 @@ function updatePromoStatusBar(run) {
     <div class="promo-status">状态：<strong>${escapeHtml(promoStatusLabel(run.status))}</strong></div>
     ${run.error_message ? `<div class="hint warn">${escapeHtml(run.error_message)}</div>` : ""}
     <div>搜索标签：${tags || "—"}</div>
-    <p class="hint">使用母帖标签搜索相关视频，为每条视频生成 5 条评论草稿（不自动发送）。</p>
+    <p class="hint">使用母帖标签通过 web_search 查找相关内容，为每条生成 5 条评论草稿（不自动发送）。</p>
   `;
 }
 
@@ -1607,7 +1599,7 @@ async function openCommentPromoModal(variantId) {
     promoCurrentRunId = null;
     if (statusBar) {
       statusBar.innerHTML = `
-        <p class="hint">将使用母帖标签在小红书/B 站搜索相关视频，每条视频生成 5 条评论草稿。</p>
+        <p class="hint">将使用母帖标签通过 web_search（site:平台域名）查找相关内容，每条生成 5 条评论草稿。无搜索结果时再回退浏览器列表抓取。</p>
         <p class="hint">点击「开始扫描」启动（需账号已登录且为 ACTIVE）。</p>
       `;
     }
@@ -1630,10 +1622,10 @@ async function openCommentPromoModal(variantId) {
 async function startCommentPromoScan() {
   if (!promoModalVariantId) return;
   const ok = confirm(
-    "评论推广将调用 LLM：\n" +
-      "1) 浏览器 Agent 按标签搜索并读取视频信息\n" +
-      "2) 为每条视频生成 5 条评论草稿\n\n" +
-      "可能产生较多 Token 消耗，是否继续？"
+    "评论推广将：\n" +
+      "1) 用 web_search 按标签搜索平台内容（无结果再回退浏览器）\n" +
+      "2) 为每条内容生成 5 条评论草稿\n\n" +
+      "可能产生 Token 消耗，是否继续？"
   );
   if (!ok) return;
   const startBtn = document.getElementById("comment-promo-start");
@@ -2579,23 +2571,67 @@ async function refreshHistoryTimeline() {
   });
 }
 
+function renderExecutionLogStepLine(logs, { toggleAttr = "data-exec-step-toggle", bodyAttr = "data-exec-step-body" } = {}) {
+  return `
+    <ol class="step-line">
+      ${(logs || [])
+        .map((step, index) => {
+          const payload = parseStepPayload(step);
+          const stepStatus = String(step.status || "running").toLowerCase();
+          const title = step.tool_name ? `${step.step} · ${step.tool_name}` : step.step;
+          const summary = step.message ? escapeHtml(String(step.message).slice(0, 160)) : "";
+          const payloadText = JSON.stringify(payload, null, 2);
+          return `
+        <li class="step-line-item status-${stepStatus}">
+          <span class="step-dot" aria-hidden="true"></span>
+          <div class="step-head">
+            <span class="step-title">${escapeHtml(title)}</span>
+            <span class="step-meta">${formatDuration(step.duration_ms)} · Token ${formatTokens(step.total_tokens)}</span>
+            <button type="button" class="step-toggle" ${toggleAttr}="${index}">展开</button>
+          </div>
+          ${summary ? `<div class="step-meta">${summary}</div>` : ""}
+          <div class="step-body" hidden ${bodyAttr}="${index}">
+            <div>状态：${escapeHtml(step.status || "—")}</div>
+            <div>Prompt tokens：${formatTokens(step.prompt_tokens)} · Completion：${formatTokens(step.completion_tokens)}</div>
+            ${step.message ? `<div>消息：${escapeHtml(step.message)}</div>` : ""}
+            ${Object.keys(payload).length ? `<pre>${escapeHtml(payloadText)}</pre>` : ""}
+            ${
+              step.screenshot_path
+                ? `<div class="step-screenshot"><a href="${screenshotUrl(step.screenshot_path)}" target="_blank">查看截图</a></div>`
+                : ""
+            }
+          </div>
+        </li>`;
+        })
+        .join("")}
+    </ol>`;
+}
+
+function wireStepToggles(container, toggleSelector, bodySelectorPrefix) {
+  container.querySelectorAll(toggleSelector).forEach((btn) => {
+    btn.onclick = () => {
+      const index =
+        btn.getAttribute(toggleSelector.replace(/[\[\]]/g, "")) ||
+        btn.dataset.opStepToggle ||
+        btn.dataset.execStepToggle;
+      const body = container.querySelector(`[${bodySelectorPrefix}="${index}"]`);
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.textContent = open ? "收起" : "展开";
+    };
+  });
+}
+
 function renderOperationDetail(detail) {
   const container = document.getElementById("history-detail");
   if (!container) return;
   const input = detail.input_snapshot || {};
-  container.innerHTML = `
-    <div class="job-detail-header">
-      <div class="stat"><strong>#${detail.id}</strong><span>操作 ID</span></div>
-      <div class="stat"><strong>${escapeHtml(historyKindLabel(detail.kind))}</strong><span>类型</span></div>
-      <div class="stat"><strong class="status-${String(detail.status).toLowerCase()}">${escapeHtml(detail.status)}</strong><span>状态</span></div>
-      <div class="stat"><strong>${formatTokens(detail.total_tokens)}</strong><span>总 Token</span></div>
-      <div class="stat"><strong>${detail.asset_id ? `#${detail.asset_id}` : "-"}</strong><span>母帖</span></div>
-    </div>
-    <p class="hint">${escapeHtml(detail.summary || "")}</p>
-    <details open>
-      <summary>初始输入</summary>
-      <pre>${escapeHtml(JSON.stringify(input, null, 2))}</pre>
-    </details>
+  const execLogs = detail.execution_logs || [];
+  const isPromo = detail.kind === "promo";
+  const showExecPrimary = isPromo && execLogs.length > 0;
+
+  const auditStepsHtml = `
     <ol class="step-line">
       ${(detail.steps || [])
         .map((step, index) => {
@@ -2623,15 +2659,39 @@ function renderOperationDetail(detail) {
         .join("")}
     </ol>`;
 
-  container.querySelectorAll("[data-op-step-toggle]").forEach((btn) => {
-    btn.onclick = () => {
-      const body = container.querySelector(`[data-op-step-body="${btn.dataset.opStepToggle}"]`);
-      if (!body) return;
-      const open = body.hidden;
-      body.hidden = !open;
-      btn.textContent = open ? "收起" : "展开";
-    };
-  });
+  container.innerHTML = `
+    <div class="job-detail-header">
+      <div class="stat"><strong>#${detail.id}</strong><span>操作 ID</span></div>
+      <div class="stat"><strong>${escapeHtml(historyKindLabel(detail.kind))}</strong><span>类型</span></div>
+      <div class="stat"><strong class="status-${String(detail.status).toLowerCase()}">${escapeHtml(detail.status)}</strong><span>状态</span></div>
+      <div class="stat"><strong>${formatTokens(detail.total_tokens)}</strong><span>总 Token</span></div>
+      <div class="stat"><strong>${detail.asset_id ? `#${detail.asset_id}` : "-"}</strong><span>母帖</span></div>
+      ${
+        detail.promo_run_id
+          ? `<div class="stat"><strong>#${detail.promo_run_id}</strong><span>推广 Run</span></div>`
+          : ""
+      }
+    </div>
+    <p class="hint">${escapeHtml(detail.summary || "")}</p>
+    <details open>
+      <summary>初始输入</summary>
+      <pre>${escapeHtml(JSON.stringify(input, null, 2))}</pre>
+    </details>
+    ${
+      showExecPrimary
+        ? `
+    <h4 class="promo-section-title">活动流</h4>
+    ${renderExecutionLogStepLine(execLogs)}
+    ${
+      (detail.steps || []).length
+        ? `<details class="history-audit-steps"><summary>审计步骤（粗粒度）</summary>${auditStepsHtml}</details>`
+        : ""
+    }`
+        : auditStepsHtml
+    }`;
+
+  wireStepToggles(container, "[data-op-step-toggle]", "data-op-step-body");
+  wireStepToggles(container, "[data-exec-step-toggle]", "data-exec-step-body");
 }
 
 async function loadOperationDetail(runId) {

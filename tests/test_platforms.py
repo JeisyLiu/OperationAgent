@@ -22,6 +22,7 @@ def client():
 
 
 def test_list_platforms_includes_tiktok():
+    clear_platform_cache()
     platforms = list_platforms(enabled_only=True)
     ids = {p.id for p in platforms}
     assert "tiktok" in ids
@@ -32,6 +33,26 @@ def test_list_platforms_includes_tiktok():
     assert "zhihu" in ids
     assert "weibo" in ids
     assert "instagram" in ids
+
+
+def test_promo_platforms_build_direct_search_url():
+    clear_platform_cache()
+    bili = get_platform("bilibili")
+    assert bili is not None
+    assert bili.search_domain_or_host() == "bilibili.com"
+    assert "search.bilibili.com" in bili.build_search_url("测评 教程")
+    assert "keyword=" in bili.build_search_url("测评")
+
+    red = get_platform("rednote")
+    assert red is not None
+    assert red.search_domain_or_host() == "xiaohongshu.com"
+    url = red.build_search_url("护肤")
+    assert "xiaohongshu.com/search_result" in url
+    assert "keyword=" in url
+
+    tiktok = get_platform("tiktok")
+    assert tiktok is not None
+    assert tiktok.search_domain_or_host() == "tiktok.com"
 
 
 def test_list_platforms_includes_new_builtin_platforms():

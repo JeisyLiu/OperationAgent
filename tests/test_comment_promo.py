@@ -121,9 +121,43 @@ def test_promo_requires_tags(client: TestClient):
     assert "标签" in resp.json()["detail"]
 
 
-def test_promo_rejects_tiktok(client: TestClient):
+@patch("app.services.comment_promo_service.llm.chat_with_usage")
+@patch(
+    "app.services.comment_promo_service.CommentPromoService._discover_for_tag",
+    new_callable=AsyncMock,
+)
+def test_promo_allows_tiktok(mock_discover, mock_llm, client: TestClient):
+    mock_discover.return_value = [
+        {"url": "https://www.tiktok.com/@u/video/1", "title": "t1", "description": "d1"}
+    ]
+
+    class FakeUsage:
+        prompt_tokens = 5
+        completion_tokens = 5
+        total_tokens = 10
+
+    mock_llm.return_value = type(
+        "R",
+        (),
+        {
+            "text": json.dumps({"comments": [f"评论{i}" for i in range(1, 6)]}),
+            "usage": FakeUsage(),
+            "model_id": 1,
+            "model_alias": "Test",
+        },
+    )()
+
     db = SessionLocal()
     try:
+        from app.services.llm_model_service import llm_model_service
+
+        llm_model_service.create(
+            db,
+            alias="Test",
+            provider="openai",
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
         account = account_service.create(db, platform="tiktok", account_name="t1")
         account_service.mark_active(db, account)
         asset = content_service.create_asset(
@@ -142,8 +176,103 @@ def test_promo_rejects_tiktok(client: TestClient):
         db.close()
 
     resp = client.post("/api/promo/runs", json={"variant_id": variant_id})
-    assert resp.status_code == 400
-    assert "小红书" in resp.json()["detail"] or "B 站" in resp.json()["detail"]
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+
+    import time
+
+    for _ in range(50):
+        detail = client.get(f"/api/promo/runs/{run_id}").json()
+        if detail["status"] in ("ready", "partial", "failed"):
+            break
+        time.sleep(0.1)
+
+    detail = client.get(f"/api/promo/runs/{run_id}").json()
+    assert detail["status"] in ("ready", "partial")
+    assert detail["platform"] == "tiktok"
+
+
+@patch("app.services.comment_promo_service.llm.chat_with_usage")
+@patch(
+    "app.services.comment_promo_service.CommentPromoService._discover_for_tag",
+    new_callable=AsyncMock,
+)
+def test_promo_allows_custom_platform(mock_discover, mock_llm, client: TestClient):
+    mock_discover.return_value = [
+        {"url": "https://forum.example.com/post/1", "title": "p1", "description": "d1"}
+    ]
+
+    class FakeUsage:
+        prompt_tokens = 5
+        completion_tokens = 5
+        total_tokens = 10
+
+    mock_llm.return_value = type(
+        "R",
+        (),
+        {
+            "text": json.dumps({"comments": [f"评论{i}" for i in range(1, 6)]}),
+            "usage": FakeUsage(),
+            "model_id": 1,
+            "model_alias": "Test",
+        },
+    )()
+
+    db = SessionLocal()
+    try:
+        from app.services.llm_model_service import llm_model_service
+        from app.services.platform_service import create_custom_platform
+        from app.platforms.loader import clear_platform_cache
+
+        llm_model_service.create(
+            db,
+            alias="Test",
+            provider="openai",
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+        create_custom_platform(
+            db,
+            {
+                "id": "forumx",
+                "display_name": "Forum X",
+                "home_url": "https://forum.example.com/",
+                "region": "global",
+            },
+        )
+        clear_platform_cache()
+        account = account_service.create(db, platform="forumx", account_name="f1")
+        account_service.mark_active(db, account)
+        asset = content_service.create_asset(
+            db, title="v", base_caption="b", media_type="text", tags=["ai"]
+        )
+        variant = content_service.create_variant(
+            db,
+            asset_id=asset.id,
+            platform="forumx",
+            title="t",
+            caption="c",
+            extra={"account_id": account.id, "generated_by": "skill"},
+        )
+        variant_id = variant.id
+    finally:
+        db.close()
+
+    resp = client.post("/api/promo/runs", json={"variant_id": variant_id})
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+
+    import time
+
+    for _ in range(50):
+        detail = client.get(f"/api/promo/runs/{run_id}").json()
+        if detail["status"] in ("ready", "partial", "failed"):
+            break
+        time.sleep(0.1)
+
+    detail = client.get(f"/api/promo/runs/{run_id}").json()
+    assert detail["status"] in ("ready", "partial")
+    assert detail["platform"] == "forumx"
 
 
 @patch("app.services.comment_promo_service.llm.chat_with_usage")
@@ -217,6 +346,12 @@ def test_promo_pipeline_creates_comments(mock_discover, mock_llm, client: TestCl
     assert op_detail.status_code == 200
     assert op_detail.json()["kind"] == "promo"
     assert len(op_detail.json()["steps"]) >= 1
+    assert op_detail.json().get("promo_run_id") == run_id
+    assert len(op_detail.json().get("execution_logs") or []) >= 1
+    assert any(
+        log["step"] in ("discover-start", "url-found", "run-start")
+        for log in op_detail.json()["execution_logs"]
+    )
 
     listing = client.get(f"/api/promo/runs?variant_id={variant_id}")
     assert listing.status_code == 200
@@ -376,7 +511,14 @@ def test_promo_abort_endpoint(mock_discover, mock_llm, client: TestClient):
     async def slow_discover(db, run, account, tag, on_step):
         import asyncio
 
-        await asyncio.sleep(0.3)
+        for _ in range(40):
+            await asyncio.sleep(0.05)
+            from app.services.comment_promo_service import comment_promo_service
+
+            if comment_promo_service._should_cancel(db, run.id):
+                from app.services.comment_promo_service import PromoCancelled
+
+                raise PromoCancelled()
         return await _mock_discover_by_tag(db, run, account, tag, on_step)
 
     mock_discover.side_effect = slow_discover
@@ -412,9 +554,9 @@ def test_promo_abort_endpoint(mock_discover, mock_llm, client: TestClient):
     time.sleep(0.05)
     abort = client.post(f"/api/promo/runs/{run_id}/abort")
     assert abort.status_code == 200
-    assert abort.json()["status"] == "cancelling"
+    assert abort.json()["status"] in ("cancelling", "cancelled")
 
-    for _ in range(50):
+    for _ in range(80):
         detail = client.get(f"/api/promo/runs/{run_id}").json()
         if detail["status"] == "cancelled":
             break
@@ -423,7 +565,35 @@ def test_promo_abort_endpoint(mock_discover, mock_llm, client: TestClient):
     detail = client.get(f"/api/promo/runs/{run_id}").json()
     assert detail["status"] == "cancelled"
     assert any(log["step"] == "abort-requested" for log in detail["logs"])
+    assert any(log["step"] == "cancelled" for log in detail["logs"])
 
+
+def test_promo_abort_orphaned_cancelling(client: TestClient):
+    """Stuck cancelling with no live pipeline can be force-finalized via abort."""
+    from datetime import datetime
+
+    db = SessionLocal()
+    try:
+        account, _, variant = _seed_bilibili_variant(db, with_tags=True)
+        run = PromoRun(
+            variant_id=variant.id,
+            asset_id=variant.asset_id,
+            account_id=account.id,
+            platform=variant.platform,
+            status="cancelling",
+            tags_json=json.dumps(["教程"], ensure_ascii=False),
+            created_at=datetime.utcnow(),
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        run_id = run.id
+    finally:
+        db.close()
+
+    abort = client.post(f"/api/promo/runs/{run_id}/abort")
+    assert abort.status_code == 200
+    assert abort.json()["status"] == "cancelled"
 
 @patch("app.services.comment_promo_service.llm.chat_with_usage")
 @patch(
@@ -476,3 +646,130 @@ def test_promo_logs_since_id(mock_discover, mock_llm, client: TestClient):
     mid = logs[0]["id"]
     inc = client.get(f"/api/promo/runs/{run_id}?since_id={mid}").json()
     assert all(log["id"] > mid for log in inc["logs"])
+
+
+@patch("app.services.comment_promo_service.llm.chat_with_usage")
+@patch(
+    "app.services.comment_promo_service.CommentPromoService._discover_for_tag_browser",
+    new_callable=AsyncMock,
+)
+@patch("app.services.comment_promo_service.web_search_service.search_site")
+def test_promo_discover_uses_web_search_skips_browser(
+    mock_search_site, mock_browser, mock_llm, client: TestClient
+):
+    from app.services.web_search_service import WebSearchResult
+
+    mock_search_site.return_value = [
+        WebSearchResult(
+            url="https://www.bilibili.com/video/教程-BV1",
+            title="教程视频1",
+            snippet="描述1",
+        ),
+        WebSearchResult(
+            url="https://www.bilibili.com/video/教程-BV2",
+            title="教程视频2",
+            snippet="描述2",
+        ),
+    ]
+
+    class FakeUsage:
+        prompt_tokens = 5
+        completion_tokens = 5
+        total_tokens = 10
+
+    mock_llm.return_value = type(
+        "R",
+        (),
+        {
+            "text": json.dumps({"comments": [f"评论{i}" for i in range(1, 6)]}),
+            "usage": FakeUsage(),
+            "model_id": 1,
+            "model_alias": "Test",
+        },
+    )()
+
+    db = SessionLocal()
+    try:
+        _, _, variant = _seed_bilibili_variant(db, with_tags=True)
+        asset = content_service.get_asset(db, variant.asset_id)
+        content_service._parse_attachments(asset)
+        # single tag for simpler assertion
+        from app.db.models import ContentAsset
+
+        asset = db.query(ContentAsset).filter(ContentAsset.id == variant.asset_id).first()
+        asset.attachments_json = json.dumps({"tags": ["教程"]}, ensure_ascii=False)
+        db.commit()
+        variant_id = variant.id
+    finally:
+        db.close()
+
+    resp = client.post("/api/promo/runs", json={"variant_id": variant_id})
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+
+    import time
+
+    for _ in range(50):
+        detail = client.get(f"/api/promo/runs/{run_id}").json()
+        if detail["status"] in ("ready", "partial", "failed"):
+            break
+        time.sleep(0.1)
+
+    mock_browser.assert_not_called()
+    mock_search_site.assert_called()
+    detail = client.get(f"/api/promo/runs/{run_id}").json()
+    assert any(log["step"] == "web-search-done" for log in detail["logs"])
+    assert len(detail["targets"]) >= 1
+
+
+@patch("app.services.comment_promo_service.llm.chat_with_usage")
+@patch(
+    "app.services.comment_promo_service.CommentPromoService._discover_for_tag_browser",
+    new_callable=AsyncMock,
+)
+@patch("app.services.comment_promo_service.web_search_service.search_site")
+def test_promo_discover_falls_back_to_browser_on_empty_search(
+    mock_search_site, mock_browser, mock_llm, client: TestClient
+):
+    mock_search_site.return_value = []
+    mock_browser.side_effect = _mock_discover_by_tag
+
+    class FakeUsage:
+        prompt_tokens = 5
+        completion_tokens = 5
+        total_tokens = 10
+
+    mock_llm.return_value = type(
+        "R",
+        (),
+        {
+            "text": json.dumps({"comments": [f"评论{i}" for i in range(1, 6)]}),
+            "usage": FakeUsage(),
+            "model_id": 1,
+            "model_alias": "Test",
+        },
+    )()
+
+    db = SessionLocal()
+    try:
+        _, _, variant = _seed_bilibili_variant(db, with_tags=True)
+        variant_id = variant.id
+    finally:
+        db.close()
+
+    resp = client.post("/api/promo/runs", json={"variant_id": variant_id})
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+
+    import time
+
+    for _ in range(50):
+        detail = client.get(f"/api/promo/runs/{run_id}").json()
+        if detail["status"] in ("ready", "partial", "failed"):
+            break
+        time.sleep(0.1)
+
+    mock_browser.assert_called()
+    detail = client.get(f"/api/promo/runs/{run_id}").json()
+    assert any(log["step"] == "web-search-empty" for log in detail["logs"])
+

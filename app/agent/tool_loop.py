@@ -16,13 +16,14 @@ MAX_TOOL_STEPS = 12
 SYSTEM_PROMPT = """You are a browser automation agent. Observe the page snapshot and choose ONE next action.
 Respond with JSON only, no markdown:
 {
-  "action": "click|type|upload|navigate|done|fail",
+  "action": "click|type|upload|navigate|web_search|done|fail",
   "selector": "css selector when needed",
-  "text": "text to type when action=type",
+  "text": "text to type when action=type, or search query when action=web_search",
   "url": "url when action=navigate",
   "message": "reason or final status message"
 }
 Rules:
+- action=web_search runs a web search with text as the query; results appear in prior actions.
 - action=done when publish succeeded; message must include status=SUCCESS and evidence.
 - action=fail when blocked (login, captcha); message must include status=FAILED and reason.
 - Prefer stable selectors: button, a, input, textarea, [role=button].
@@ -124,6 +125,21 @@ async def _execute_action(page, action: dict[str, Any], media_path: str | None) 
             selector = "input[type=file]"
         await page.set_input_files(selector, media_path, timeout=15000)
         return f"uploaded file to {selector}"
+    if kind == "web_search":
+        from app.services.web_search_service import web_search_service
+
+        query = (action.get("text") or action.get("query") or "").strip()
+        if not query:
+            return "web_search missing query"
+        hits = web_search_service.search(query, max_results=8)
+        if not hits:
+            return f"web_search returned no results for: {query}"
+        lines = [f"web_search ({len(hits)} results) for: {query}"]
+        for i, hit in enumerate(hits, start=1):
+            lines.append(f"  {i}. {hit.title or '(no title)'} — {hit.url}")
+            if hit.snippet:
+                lines.append(f"     {hit.snippet[:200]}")
+        return "\n".join(lines)
     if kind in {"done", "fail"}:
         return action.get("message") or kind
     return f"unknown action {kind}"

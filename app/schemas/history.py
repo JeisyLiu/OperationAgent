@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.jobs import ExecutionLogResponse
+
 
 class HistoryItemResponse(BaseModel):
     id: str
@@ -64,6 +66,8 @@ class OperationRunResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
     steps: list[OperationStepResponse] = Field(default_factory=list)
+    execution_logs: list[ExecutionLogResponse] = Field(default_factory=list)
+    promo_run_id: int | None = None
 
 
 def operation_step_to_response(step) -> OperationStepResponse:
@@ -109,7 +113,13 @@ def operation_step_to_response(step) -> OperationStepResponse:
     )
 
 
-def operation_run_to_response(run, steps: list) -> OperationRunResponse:
+def operation_run_to_response(
+    run,
+    steps: list,
+    *,
+    execution_logs: list | None = None,
+    promo_run_id: int | None = None,
+) -> OperationRunResponse:
     account_ids = []
     if run.account_ids_json:
         try:
@@ -128,6 +138,12 @@ def operation_run_to_response(run, steps: list) -> OperationRunResponse:
             input_snapshot = json.loads(run.input_json)
         except json.JSONDecodeError:
             input_snapshot = {}
+    if promo_run_id is None:
+        raw_promo = input_snapshot.get("promo_run_id")
+        try:
+            promo_run_id = int(raw_promo) if raw_promo is not None else None
+        except (TypeError, ValueError):
+            promo_run_id = None
     return OperationRunResponse(
         id=run.id,
         kind=run.kind,
@@ -144,4 +160,8 @@ def operation_run_to_response(run, steps: list) -> OperationRunResponse:
         created_at=run.created_at,
         completed_at=run.completed_at,
         steps=[operation_step_to_response(s) for s in steps],
+        execution_logs=[
+            ExecutionLogResponse.model_validate(log) for log in (execution_logs or [])
+        ],
+        promo_run_id=promo_run_id,
     )

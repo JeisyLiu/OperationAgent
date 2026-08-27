@@ -77,6 +77,72 @@ def test_execution_log_migration_columns_exist():
         "subject_id",
     ):
         assert name in columns
+    job_col = next(c for c in inspector.get_columns("execution_logs") if c["name"] == "job_id")
+    assert job_col["nullable"] is True
+
+
+def test_execution_log_promo_run_allows_null_job_id():
+    from app.services.execution_log_service import SUBJECT_PROMO_RUN, execution_log_service
+
+    db = SessionLocal()
+    try:
+        log = execution_log_service.add_log(
+            db,
+            subject_type=SUBJECT_PROMO_RUN,
+            subject_id=999,
+            step="abort-requested",
+            message="正在中止任务…",
+        )
+        assert log.job_id is None
+        assert log.subject_type == SUBJECT_PROMO_RUN
+        assert log.subject_id == 999
+    finally:
+        db.close()
+
+
+def test_rebuild_execution_logs_makes_job_id_nullable():
+    """Simulate legacy NOT NULL job_id and ensure migration rebuilds the table."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS execution_logs"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE execution_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    step VARCHAR(64) NOT NULL,
+                    message TEXT,
+                    screenshot_path VARCHAR(512),
+                    created_at DATETIME,
+                    FOREIGN KEY (job_id) REFERENCES publish_jobs(id)
+                )
+                """
+            )
+        )
+
+    run_migrations()
+    inspector = inspect(engine)
+    job_col = next(c for c in inspector.get_columns("execution_logs") if c["name"] == "job_id")
+    assert job_col["nullable"] is True
+    assert "subject_type" in {c["name"] for c in inspector.get_columns("execution_logs")}
+
+    db = SessionLocal()
+    try:
+        from app.services.execution_log_service import SUBJECT_PROMO_RUN, execution_log_service
+
+        log = execution_log_service.add_log(
+            db,
+            subject_type=SUBJECT_PROMO_RUN,
+            subject_id=42,
+            step="run-start",
+            message="ok",
+        )
+        assert log.job_id is None
+        assert log.subject_type == SUBJECT_PROMO_RUN
+    finally:
+        db.close()
 
 
 def test_job_detail_returns_steps_and_totals(client: TestClient):

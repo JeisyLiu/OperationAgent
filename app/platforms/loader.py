@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote, urlparse
 
 from sqlalchemy.orm import Session
 
@@ -29,11 +30,32 @@ class PlatformDef:
     default_skill: dict[str, Any] = field(default_factory=dict)
     publish_options: dict[str, Any] = field(default_factory=dict)
     preferred_adapter: str | None = None
+    search_url_template: str | None = None
+    search_domain: str | None = None
     source: Literal["builtin", "custom"] = "builtin"
 
     @property
     def open_url(self) -> str:
         return self.login_url or self.home_url
+
+    def search_domain_or_host(self) -> str | None:
+        if self.search_domain:
+            host = self.search_domain.strip().lower()
+        else:
+            try:
+                host = (urlparse(self.home_url).hostname or "").lower()
+            except Exception:
+                host = ""
+        if host.startswith("www."):
+            host = host[4:]
+        return host or None
+
+    def build_search_url(self, query: str) -> str:
+        """Build a direct search-results URL when a template is configured."""
+        q = quote(str(query or "").strip(), safe="")
+        if self.search_url_template and "{query}" in self.search_url_template:
+            return self.search_url_template.replace("{query}", q)
+        return self.home_url
 
 
 class PlatformNotFoundError(ValueError):
@@ -61,6 +83,8 @@ def _parse_platform(data: dict[str, Any], *, source: Literal["builtin", "custom"
         default_skill=dict(data.get("default_skill", {})),
         publish_options=dict(data.get("publish_options", {})),
         preferred_adapter=data.get("preferred_adapter"),
+        search_url_template=data.get("search_url_template"),
+        search_domain=data.get("search_domain"),
         source=source,
     )
 
@@ -102,6 +126,8 @@ def _custom_row_to_def(row) -> PlatformDef:
         default_skill=json.loads(row.default_skill_json or "{}"),
         publish_options=json.loads(row.publish_options_json or "{}"),
         preferred_adapter=row.preferred_adapter,
+        search_url_template=None,
+        search_domain=None,
         source="custom",
     )
 

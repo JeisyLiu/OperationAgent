@@ -27,10 +27,10 @@ from app.services.account_service import account_service
 from app.services.content_service import content_service
 from app.services.execution_log_service import SUBJECT_PROMO_RUN, execution_log_service
 from app.services.operation_service import operation_service
+from app.services.web_search_service import web_search_service
 
 logger = logging.getLogger(__name__)
 
-PROMO_ALLOWED_PLATFORMS = frozenset({"rednote", "bilibili"})
 PROMO_VIDEOS_PER_TAG = 5
 PROMO_COMMENTS_PER_VIDEO = 5
 PROMO_ACTIVE_STATUSES = frozenset({"pending", "discovering", "generating", "cancelling"})
@@ -38,8 +38,14 @@ PROMO_TERMINAL_STATUSES = frozenset({"ready", "partial", "failed", "cancelled"})
 SEEN_SKIP_STATUSES = frozenset({"seen", "drafted", "commented"})
 
 
+class PromoCancelled(Exception):
+    """Raised when a promo run is aborted mid-flight."""
+
+
 class CommentPromoService:
     _active_adapters: dict[int, object] = {}
+    _active_loops: dict[int, asyncio.AbstractEventLoop] = {}
+    _cancel_flags: dict[int, threading.Event] = {}
 
     def _load_prompt(self, name: str) -> str:
         path = Path(__file__).resolve().parents[1] / "prompts" / name
@@ -153,15 +159,57 @@ class CommentPromoService:
         )
         return row is not None and row.status in SEEN_SKIP_STATUSES
 
-    def _should_cancel(self, db: Session, run_id: int) -> bool:
-        run = db.query(PromoRun).filter(PromoRun.id == run_id).first()
-        return run is not None and run.status in ("cancelling", "cancelled")
-
-    def _stop_adapter_sync(self, adapter) -> None:
+    def _should_cancel(self, db: Session | None, run_id: int) -> bool:
+        if self._cancel_flags.get(run_id) and self._cancel_flags[run_id].is_set():
+            return True
+        # Always read status from a fresh connection — pipeline session identity map
+        # can remain stale after abort commits in another session.
+        check_db = SessionLocal()
         try:
-            asyncio.run(adapter.stop())
-        except Exception:
-            logger.exception("Failed to stop promo discover adapter")
+            status = (
+                check_db.query(PromoRun.status)
+                .filter(PromoRun.id == run_id)
+                .scalar()
+            )
+            return status in ("cancelling", "cancelled")
+        finally:
+            check_db.close()
+
+    def _request_adapter_stop(self, run_id: int) -> None:
+        adapter = self._active_adapters.get(run_id)
+        if adapter is None:
+            return
+        # Sync flag is checked by adapters between steps; set it immediately.
+        if hasattr(adapter, "_stop_requested"):
+            try:
+                adapter._stop_requested = True
+            except Exception:
+                pass
+        loop = self._active_loops.get(run_id)
+        if loop is not None and loop.is_running():
+            try:
+                fut = asyncio.run_coroutine_threadsafe(adapter.stop(), loop)
+                fut.add_done_callback(
+                    lambda f: f.exception() and logger.warning(
+                        "Promo adapter stop failed for run %s: %s", run_id, f.exception()
+                    )
+                )
+                return
+            except Exception:
+                logger.exception("Failed to schedule adapter.stop for run %s", run_id)
+        # Fallback: best-effort sync stop in a daemon thread (no nested asyncio.run on busy loop)
+        def _fallback_stop() -> None:
+            try:
+                if hasattr(adapter, "_stop_requested"):
+                    adapter._stop_requested = True
+            except Exception:
+                logger.exception("Failed to set stop flag for run %s", run_id)
+
+        threading.Thread(
+            target=_fallback_stop,
+            daemon=True,
+            name=f"promo-abort-{run_id}",
+        ).start()
 
     def _resolve_tags(self, db: Session, variant) -> list[str]:
         asset = content_service.get_asset(db, variant.asset_id)
@@ -214,8 +262,11 @@ class CommentPromoService:
         variant = content_service.get_variant(db, variant_id)
         if variant is None:
             raise ValueError("Variant not found")
-        if variant.platform not in PROMO_ALLOWED_PLATFORMS:
-            raise ValueError("评论推广仅支持小红书与 B 站")
+        platform = get_platform(variant.platform, db=db)
+        if platform is None:
+            raise ValueError("未知平台")
+        if not platform.search_domain_or_host():
+            raise ValueError("该平台缺少可搜索的域名（请配置 home_url）")
         account_id = self._variant_account_id(variant)
         if account_id is None:
             raise ValueError("内容包未关联账号")
@@ -302,18 +353,27 @@ class CommentPromoService:
             raise ValueError("Promo run not found")
         if run.status not in PROMO_ACTIVE_STATUSES:
             raise ValueError("任务未在运行，无法中止")
-        run.status = "cancelling"
-        db.commit()
-        db.refresh(run)
-        self._log_promo(db, run.id, "abort-requested", "正在中止任务…")
-        adapter = self._active_adapters.get(run_id)
-        if adapter is not None:
-            threading.Thread(
-                target=self._stop_adapter_sync,
-                args=(adapter,),
-                daemon=True,
-                name=f"promo-abort-{run_id}",
-            ).start()
+
+        flag = self._cancel_flags.get(run_id)
+        if flag is None:
+            flag = threading.Event()
+            self._cancel_flags[run_id] = flag
+        flag.set()
+
+        # Orphaned cancelling run (server restarted / pipeline gone): finalize immediately.
+        pipeline_alive = run_id in self._active_loops or run_id in self._active_adapters
+        if run.status == "cancelling" and not pipeline_alive:
+            self._finish_cancelled(db, run)
+            db.refresh(run)
+            return run
+
+        if run.status != "cancelling":
+            run.status = "cancelling"
+            db.commit()
+            db.refresh(run)
+            self._log_promo(db, run.id, "abort-requested", "正在中止任务…")
+
+        self._request_adapter_stop(run_id)
         return run
 
     def list_logs(
@@ -353,6 +413,9 @@ class CommentPromoService:
         )
 
     def _finish_cancelled(self, db: Session, run: PromoRun) -> None:
+        db.refresh(run)
+        if run.status == "cancelled":
+            return
         run.status = "cancelled"
         run.completed_at = datetime.utcnow()
         db.commit()
@@ -366,6 +429,7 @@ class CommentPromoService:
         )
 
     def _run_pipeline_thread(self, run_id: int) -> None:
+        self._cancel_flags[run_id] = threading.Event()
         try:
             asyncio.run(self._run_pipeline(run_id))
         except Exception:
@@ -374,23 +438,31 @@ class CommentPromoService:
             try:
                 run = db.query(PromoRun).filter(PromoRun.id == run_id).first()
                 if run and run.status in PROMO_ACTIVE_STATUSES:
-                    run.status = "failed"
-                    run.error_message = "Internal pipeline error"
-                    run.completed_at = datetime.utcnow()
-                    db.commit()
-                    self._log_promo(db, run.id, "failed", "内部错误导致任务失败")
-                    self._finalize_operation(
-                        db,
-                        operation_run_id=run.operation_run_id,
-                        status="failed",
-                        variant_id=run.variant_id,
-                        error_message="Internal pipeline error",
-                    )
+                    if run.status == "cancelling" or self._should_cancel(None, run_id):
+                        self._finish_cancelled(db, run)
+                    else:
+                        run.status = "failed"
+                        run.error_message = "Internal pipeline error"
+                        run.completed_at = datetime.utcnow()
+                        db.commit()
+                        self._log_promo(db, run.id, "failed", "内部错误导致任务失败")
+                        self._finalize_operation(
+                            db,
+                            operation_run_id=run.operation_run_id,
+                            status="failed",
+                            variant_id=run.variant_id,
+                            error_message="Internal pipeline error",
+                        )
             finally:
                 db.close()
+        finally:
+            self._cancel_flags.pop(run_id, None)
+            self._active_adapters.pop(run_id, None)
+            self._active_loops.pop(run_id, None)
 
     async def _run_pipeline(self, run_id: int) -> None:
         db = SessionLocal()
+        self._active_loops[run_id] = asyncio.get_running_loop()
         try:
             run = db.query(PromoRun).filter(PromoRun.id == run_id).first()
             if run is None:
@@ -411,6 +483,10 @@ class CommentPromoService:
                 )
                 return
 
+            if self._should_cancel(db, run_id):
+                self._finish_cancelled(db, run)
+                return
+
             tags = json.loads(run.tags_json or "[]")
             run.status = "discovering"
             db.commit()
@@ -425,7 +501,6 @@ class CommentPromoService:
 
             partial = False
             for tag in tags:
-                db.refresh(run)
                 if self._should_cancel(db, run_id):
                     self._finish_cancelled(db, run)
                     return
@@ -525,7 +600,13 @@ class CommentPromoService:
                             variant_id=run.variant_id,
                             duration_ms=duration_ms,
                         )
+                except PromoCancelled:
+                    self._finish_cancelled(db, run)
+                    return
                 except Exception as exc:
+                    if self._should_cancel(db, run_id):
+                        self._finish_cancelled(db, run)
+                        return
                     logger.warning("Discover failed for tag %s run %s: %s", tag, run_id, exc)
                     partial = True
                     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -564,7 +645,6 @@ class CommentPromoService:
                             error_message=str(exc),
                         )
 
-            db.refresh(run)
             if self._should_cancel(db, run_id):
                 self._finish_cancelled(db, run)
                 return
@@ -595,6 +675,10 @@ class CommentPromoService:
                 )
                 return
 
+            if self._should_cancel(db, run_id):
+                self._finish_cancelled(db, run)
+                return
+
             run.status = "generating"
             db.commit()
 
@@ -603,7 +687,6 @@ class CommentPromoService:
             skill_dict = skill.model_dump(exclude_none=True) if skill else {}
 
             for target in targets:
-                db.refresh(run)
                 if self._should_cancel(db, run_id):
                     self._finish_cancelled(db, run)
                     return
@@ -628,6 +711,9 @@ class CommentPromoService:
                         persona=persona,
                         skill_json=skill_dict,
                     )
+                    if self._should_cancel(db, run_id):
+                        self._finish_cancelled(db, run)
+                        return
                     duration_ms = int((time.perf_counter() - started) * 1000)
                     for body in comments[:PROMO_COMMENTS_PER_VIDEO]:
                         db.add(
@@ -709,6 +795,9 @@ class CommentPromoService:
                             duration_ms=duration_ms,
                         )
                 except Exception as exc:
+                    if self._should_cancel(db, run_id):
+                        self._finish_cancelled(db, run)
+                        return
                     logger.warning(
                         "Comment generation failed for target %s: %s", target.id, exc
                     )
@@ -749,6 +838,10 @@ class CommentPromoService:
                             error_message=str(exc),
                         )
 
+            if self._should_cancel(db, run_id):
+                self._finish_cancelled(db, run)
+                return
+
             run.status = "partial" if partial else "ready"
             run.completed_at = datetime.utcnow()
             db.commit()
@@ -766,6 +859,7 @@ class CommentPromoService:
             )
         finally:
             self._active_adapters.pop(run_id, None)
+            self._active_loops.pop(run_id, None)
             db.close()
 
     async def _discover_for_tag(
@@ -776,15 +870,79 @@ class CommentPromoService:
         tag: str,
         on_step,
     ) -> list[dict]:
-        platform = get_platform(run.platform)
+        platform = get_platform(run.platform, db=db)
         if platform is None:
             raise ValueError(f"Unknown platform {run.platform}")
 
+        if self._should_cancel(db, run.id):
+            raise PromoCancelled()
+
+        domain = platform.search_domain_or_host()
+        if domain:
+            query = f"site:{domain} {tag}"
+            self._log_promo(
+                db,
+                run.id,
+                "web-search-start",
+                f"搜索：{query}",
+                tool_name="web_search",
+                payload_json=json.dumps({"domain": domain, "tag": tag, "query": query}, ensure_ascii=False),
+            )
+            hits = web_search_service.search_site(
+                domain,
+                tag,
+                max_results=PROMO_VIDEOS_PER_TAG,
+            )
+            if hits:
+                items = [
+                    {
+                        "url": self._normalize_url(hit.url),
+                        "title": hit.title or None,
+                        "description": hit.snippet or None,
+                    }
+                    for hit in hits
+                ]
+                self._log_promo(
+                    db,
+                    run.id,
+                    "web-search-done",
+                    f"找到 {len(items)} 条结果",
+                    tool_name="web_search",
+                    status="success",
+                    payload_json=json.dumps(
+                        {"count": len(items), "domain": domain, "tag": tag},
+                        ensure_ascii=False,
+                    ),
+                )
+                return items
+
+            self._log_promo(
+                db,
+                run.id,
+                "web-search-empty",
+                "未找到结果，回退浏览器列表抓取",
+                tool_name="web_search",
+                status="partial",
+                payload_json=json.dumps({"domain": domain, "tag": tag}, ensure_ascii=False),
+            )
+
+        return await self._discover_for_tag_browser(db, run, account, tag, on_step, platform)
+
+    async def _discover_for_tag_browser(
+        self,
+        db: Session,
+        run: PromoRun,
+        account,
+        tag: str,
+        on_step,
+        platform,
+    ) -> list[dict]:
         template = self._load_prompt("promo_discover.md")
+        search_url = platform.build_search_url(tag)
         prompt = template.format(
             platform_display=platform.display_name,
             platform=run.platform,
-            home_url=platform.home_url,
+            search_url=search_url,
             tag=tag,
             max_items=PROMO_VIDEOS_PER_TAG,
         )
@@ -794,16 +952,46 @@ class CommentPromoService:
         adapter = resolve_adapter_for_platform(run.platform)
         self._active_adapters[run.id] = adapter
         try:
+            if self._should_cancel(db, run.id):
+                raise PromoCancelled()
+
             task = AgentTask(
                 job_id=run.id,
                 platform=run.platform,
                 profile_path=account.browser_profile,
                 prompt=prompt,
                 execution_dir=str(execution_dir),
-                metadata={"kind": "promo_discover", "tag": tag},
+                metadata={
+                    "kind": "promo_discover",
+                    "tag": tag,
+                    "upload_url": search_url,
+                    "home_url": search_url,
+                },
                 on_step=on_step,
             )
-            result = await adapter.execute(task)
+            exec_task = asyncio.create_task(adapter.execute(task))
+            while not exec_task.done():
+                if self._should_cancel(db, run.id):
+                    if hasattr(adapter, "_stop_requested"):
+                        adapter._stop_requested = True
+                    try:
+                        await asyncio.wait_for(adapter.stop(), timeout=5)
+                    except Exception:
+                        logger.warning("adapter.stop during cancel failed for run %s", run.id)
+                    try:
+                        await asyncio.wait_for(exec_task, timeout=8)
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        exec_task.cancel()
+                        try:
+                            await exec_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                    raise PromoCancelled()
+                await asyncio.wait({exec_task}, timeout=0.5)
+
+            result = exec_task.result()
+            if self._should_cancel(db, run.id) or result.status == AgentStatus.STOPPED:
+                raise PromoCancelled()
             if result.status != AgentStatus.SUCCESS:
                 raise ValueError(result.message or "Discovery agent failed")
 

@@ -5,6 +5,8 @@
   "home_url": "https://www.bilibili.com/",
   "login_url": "https://passport.bilibili.com/login",
   "upload_url": "https://member.bilibili.com/platform/upload/video/frame",
+  "search_url_template": "https://search.bilibili.com/all?keyword={query}",
+  "search_domain": "bilibili.com",
   "enabled": true,
   "channel": null,
   "media_types": ["video"],

@@ -5,6 +5,8 @@
   "home_url": "https://www.xiaohongshu.com/",
   "login_url": "https://www.xiaohongshu.com/login",
   "upload_url": "https://creator.xiaohongshu.com/publish/publish",
+  "search_url_template": "https://www.xiaohongshu.com/search_result?keyword={query}&source=web_search_result_notes",
+  "search_domain": "xiaohongshu.com",
   "enabled": true,
   "channel": null,
   "preferred_adapter": "chrome_devtools",

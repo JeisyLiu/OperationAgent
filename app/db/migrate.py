@@ -249,9 +249,82 @@ def run_migrations() -> None:
                     )
                 )
                 logger.info("Migration: backfilled execution_logs subject columns")
+            _rebuild_execution_logs_if_needed(conn)
 
     _migrate_ai_settings_to_llm_models()
     _seed_skill_templates()
+
+
+def _rebuild_execution_logs_if_needed(conn) -> None:
+    """SQLite cannot ALTER COLUMN; rebuild when job_id is still NOT NULL."""
+    cols = {c["name"]: c for c in inspect(engine).get_columns("execution_logs")}
+    job_col = cols.get("job_id")
+    if job_col is None:
+        return
+    if job_col.get("nullable", False):
+        return
+
+    logger.info("Migration: rebuilding execution_logs to allow nullable job_id")
+    conn.execute(text("PRAGMA foreign_keys=OFF"))
+    conn.execute(
+        text(
+            """
+            CREATE TABLE execution_logs_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER,
+                subject_type VARCHAR(32) NOT NULL DEFAULT 'job',
+                subject_id INTEGER NOT NULL,
+                step VARCHAR(64) NOT NULL,
+                message TEXT,
+                screenshot_path VARCHAR(512),
+                tool_name VARCHAR(128),
+                status VARCHAR(32),
+                duration_ms INTEGER,
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                total_tokens INTEGER,
+                payload_json TEXT,
+                started_at DATETIME,
+                created_at DATETIME,
+                FOREIGN KEY (job_id) REFERENCES publish_jobs(id)
+            )
+            """
+        )
+    )
+    # Copy with subject backfill for any legacy rows missing subject columns
+    conn.execute(
+        text(
+            """
+            INSERT INTO execution_logs_new (
+                id, job_id, subject_type, subject_id, step, message, screenshot_path,
+                tool_name, status, duration_ms, prompt_tokens, completion_tokens,
+                total_tokens, payload_json, started_at, created_at
+            )
+            SELECT
+                id,
+                job_id,
+                COALESCE(subject_type, 'job'),
+                COALESCE(subject_id, job_id),
+                step,
+                message,
+                screenshot_path,
+                tool_name,
+                status,
+                duration_ms,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                payload_json,
+                started_at,
+                created_at
+            FROM execution_logs
+            """
+        )
+    )
+    conn.execute(text("DROP TABLE execution_logs"))
+    conn.execute(text("ALTER TABLE execution_logs_new RENAME TO execution_logs"))
+    conn.execute(text("PRAGMA foreign_keys=ON"))
+    logger.info("Migration: execution_logs rebuilt with nullable job_id")
 
 
 def _seed_skill_templates() -> None:

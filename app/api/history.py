@@ -97,8 +97,43 @@ def list_history(
 
 @router.get("/operations/{run_id}", response_model=OperationRunResponse)
 def get_operation(run_id: int, db: Session = Depends(get_db)) -> OperationRunResponse:
+    import json
+
+    from app.db.models import PromoRun
+    from app.services.execution_log_service import SUBJECT_PROMO_RUN, execution_log_service
+
     run = operation_service.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Operation not found")
     steps = operation_service.get_steps(db, run_id)
-    return operation_run_to_response(run, steps)
+
+    execution_logs = []
+    promo_run_id = None
+    if run.kind == "promo":
+        if run.input_json:
+            try:
+                snap = json.loads(run.input_json)
+                raw = snap.get("promo_run_id")
+                promo_run_id = int(raw) if raw is not None else None
+            except (json.JSONDecodeError, TypeError, ValueError):
+                promo_run_id = None
+        if promo_run_id is None:
+            promo = (
+                db.query(PromoRun)
+                .filter(PromoRun.operation_run_id == run.id)
+                .order_by(PromoRun.id.desc())
+                .first()
+            )
+            if promo:
+                promo_run_id = promo.id
+        if promo_run_id is not None:
+            execution_logs = execution_log_service.list_logs(
+                db, SUBJECT_PROMO_RUN, promo_run_id
+            )
+
+    return operation_run_to_response(
+        run,
+        steps,
+        execution_logs=execution_logs,
+        promo_run_id=promo_run_id,
+    )
