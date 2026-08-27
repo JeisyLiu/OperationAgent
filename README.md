@@ -2,127 +2,86 @@
 
 Local AI social media operator — runs entirely on your machine.
 
-This is a **single-machine** app: one local process, SQLite database under `data/`, browser profiles, and a pluggable Agent adapter on disk. It is **not** a cloud backend.
+## Prerequisite (only this)
 
-## Requirements
+- **Python 3.11+** installed and on PATH  
+  Download: https://www.python.org/downloads/
 
-- Python 3.11+
-- Windows / macOS / Linux
-- Playwright Chromium (`playwright install chromium`)
-- LLM API key optional (Settings → LLM pool; only needed for AI generate / rewrite)
+Everything else (venv、pip 依赖、`.env`、数据库、Playwright 浏览器) is installed **automatically** on first start.
 
-## Quick start (one click)
+## One-click start
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev]"
-playwright install chromium
-```
-
-**Start everything (server + open UI):**
-
-```bash
-python -m app.launcher
-```
-
-Windows double-click:
+**Windows（推荐双击 / 右键用 PowerShell 运行）：**
 
 ```powershell
 powershell -File scripts/start.ps1
 ```
 
-No second terminal, no manual Chrome CDP, no `--reload`.
+**macOS / Linux：**
+
+```bash
+bash scripts/start.sh
+```
+
+或已有 venv 时：
+
+```bash
+python -m app.launcher
+```
+
+首次启动会自动：
+
+1. 创建 `.venv`（若还没有）
+2. `pip install -e .`
+3. 复制 `.env.example` → `.env`
+4. 初始化 `data/` 与 SQLite
+5. 下载 Playwright Chromium（若缺失）
+6. 启动服务并打开浏览器 UI
+
+无需手动 `playwright install`，无需第二终端起 Chrome。
 
 ## First-time use
 
-1. App opens at **http://127.0.0.1:8000/**
-2. **Accounts** → add platform → **登录并启用** → complete login in the opened browser → confirm in app
-3. **Content** → upload → create variant → **Queue**
-4. Wait for **SUCCESS**; view steps/screenshots in **History**
-
-Login and captcha happen only once per account. Publishing runs unattended afterward.
+1. 应用打开 **http://127.0.0.1:8000/**
+2. **Accounts** → 添加账号 → **登录并启用**（仅首次做人机）
+3. **Content** → 上传 → 入队 → 等待 SUCCESS
 
 ## Environment
 
-`.env` is auto-created from `.env.example` on first launch.
+`.env` 首次自动生成。默认：
 
 ```text
 APP_DATA_DIR=./data
 AGENT_ADAPTER=stagehand
 ```
 
-Use `AGENT_ADAPTER=mock` for queue testing without a real browser.
+| `AGENT_ADAPTER` | 说明 |
+|-----------------|------|
+| `stagehand` | **默认**；与登录同一 `data/profiles/...` |
+| `browser_use` | browser-use 自主路径 |
+| `chrome_devtools` | CDP；程序按需自动起 Chrome |
+| `mock` | 仅测队列 |
 
-### Agent adapters
-
-| `AGENT_ADAPTER` | When to use |
-|-----------------|-------------|
-| `stagehand` | **Default**; same browser profile as login (`data/profiles/...`) |
-| `browser_use` | Autonomous browser-use + persistent profile |
-| `chrome_devtools` | Attach to Chrome CDP (auto-started when needed) |
-| `openclaw` | External OpenClaw CLI/HTTP gateway |
-| `mock` | Tests / queue dry-run |
-
-Infra degrade chain: `browser_use` → `stagehand`.  
-Platforms may set `preferred_adapter` in catalog (e.g. RedNote → `chrome_devtools`).
-
-## Smoke script (MVP acceptance)
+## Smoke（可选验收）
 
 ```bash
 python scripts/smoke_publish.py --variant-id 1 --account-id 1 --runs 3 --report data/smoke_report.json
 ```
 
-Or:
+## What the program auto-manages vs what only you can do
 
-```powershell
-powershell -File scripts/run_mvp_smoke.ps1 -VariantId 1 -AccountId 1
-```
+| 自动 | 须用户 |
+|------|--------|
+| venv / pip 依赖 | 安装系统 Python |
+| Playwright Chromium | 平台首次登录 / 验证码 |
+| `.env`、数据库目录 | LLM API Key（若要用 AI 生成） |
+| Worker 锁自愈、按需 CDP Chrome | — |
 
-## Worker controls
-
-- UI footer: **Pause** / **Stop**
-- API: `GET /api/worker/status`, pause/stop
-
-## Verify
-
-```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/api/health/readiness
-```
-
-## Key APIs
-
-| Area | Endpoints |
-|------|-----------|
-| Health | `GET /health`, `GET /api/health/readiness`, `POST /api/health/heal` |
-| Accounts | `POST .../login-and-activate`, `.../mark-active` |
-| Jobs | create, detail, logs, republish |
-| Worker | status, pause, stop |
-
-## Architecture
-
-```text
-UI → FastAPI → Channel → AgentAdapter (stagehand) → Playwright persistent profile
-```
-
-Login and publish share the same `data/profiles/...` session.
-
-## MVP 0.2.0 hypothesis
-
-**Hypothesis:** A local operator can publish from persisted browser profiles with one-click startup and acceptable reliability.
-
-**Conclusion:** **Partially validated** — one-click launcher, unified login flow, profile-aligned stagehand path, and self-heal readiness are in place. Run `smoke_publish.py --runs 3` locally to confirm platform SUCCESS.
-
-Known issues: [version/KNOWN_ISSUES.md](./version/KNOWN_ISSUES.md)
-
-## Documentation
+## Docs
 
 | Document | Purpose |
 |----------|---------|
-| [version/0.2.0](./version/0.2.0) | MVP freeze checklist |
-| [version/KNOWN_ISSUES.md](./version/KNOWN_ISSUES.md) | Environment blockers |
+| [version/0.2.0](./version/0.2.0) | MVP checklist |
+| [version/KNOWN_ISSUES.md](./version/KNOWN_ISSUES.md) | Blockers |
 
-## Current version
-
-**v0.2.0** — one-click launcher, stagehand default, login-and-activate, auto-heal readiness.
+**v0.2.0** — one-click bootstrap + stagehand default + login-and-activate.

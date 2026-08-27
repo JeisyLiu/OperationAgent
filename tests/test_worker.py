@@ -54,5 +54,5 @@ def test_worker_clears_stale_lock_and_starts(tmp_path, monkeypatch):
         await w.stop()
         return msg
 
-    msg = asyncio.get_event_loop().run_until_complete(run())
+    msg = asyncio.run(run())
     assert "队列" in msg or "运行" in msg

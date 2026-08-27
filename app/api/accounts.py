@@ -17,6 +17,7 @@ from app.schemas.accounts import (
     SessionCheckResponse,
 )
 from app.services.account_service import account_service
+from app.services.event_bus import emit_readiness_changed
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -159,9 +160,12 @@ async def _open_profile_for_account(
     try:
         await runtime.open_profile(profile_path, url=url)
     except Exception as exc:
+        detail = str(exc)
+        if "Executable doesn't exist" in detail or "playwright install" in detail.lower():
+            detail = "浏览器引擎未就绪，正在尝试自动安装失败。请点 Dashboard「重试修复」后再试「登录并启用」。"
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to open browser profile: {exc}",
+            detail=detail if detail.startswith("已") or "浏览器" in detail else f"打开浏览器失败：{detail}",
         ) from exc
 
     _profile_runtimes[account_id] = runtime
@@ -179,7 +183,9 @@ async def mark_active(account_id: int, db: Session = Depends(get_db)) -> Account
     if runtime is not None:
         await runtime.close()
 
-    return _account_response(account_service.mark_active(db, account))
+    account = account_service.mark_active(db, account)
+    emit_readiness_changed()
+    return _account_response(account)
 
 
 @router.post("/{account_id}/check-session", response_model=SessionCheckResponse)

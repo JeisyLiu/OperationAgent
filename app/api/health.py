@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.config import APP_VERSION
 from app.db.session import get_db
-from app.scheduler.worker import worker
+from app.services.event_bus import emit_readiness_changed
 from app.services.readiness_service import heal_and_readiness, run_readiness
 
 router = APIRouter(tags=["health"])
@@ -15,12 +15,12 @@ def health() -> dict[str, str]:
 
 
 @router.get("/api/health/readiness")
-async def readiness(db: Session = Depends(get_db)) -> dict:
-    # Quiet self-heal on every poll: clear stale lock and start worker if needed
-    await worker.ensure_running()
-    return run_readiness(db, auto_heal=True)
+def readiness(db: Session = Depends(get_db)) -> dict:
+    return run_readiness(db, auto_heal=False)
 
 
 @router.post("/api/health/heal")
 async def heal(db: Session = Depends(get_db)) -> dict:
-    return await heal_and_readiness(db)
+    report = await heal_and_readiness(db)
+    emit_readiness_changed()
+    return report

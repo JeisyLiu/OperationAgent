@@ -1,9 +1,8 @@
-"""One-click launcher: setup env, start API server, open UI."""
+"""One-click launcher: bootstrap env, start API, open UI."""
 
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -11,32 +10,15 @@ import time
 import webbrowser
 from pathlib import Path
 
-import httpx
-
 ROOT = Path(__file__).resolve().parent.parent
 HOST = os.environ.get("OA_HOST", "127.0.0.1")
 PORT = int(os.environ.get("OA_PORT", "8000"))
 BASE_URL = f"http://{HOST}:{PORT}"
 
 
-def ensure_env() -> None:
-    env_path = ROOT / ".env"
-    example = ROOT / ".env.example"
-    if not env_path.exists() and example.exists():
-        shutil.copy(example, env_path)
-        print(f"Created {env_path} from .env.example")
+def wait_for_health(timeout: float = 90.0) -> bool:
+    import httpx
 
-
-def ensure_data() -> None:
-    from app.config import settings
-    from app.db.models import Base
-    from app.db.session import engine
-
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
-
-
-def wait_for_health(timeout: float = 60.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -44,7 +26,7 @@ def wait_for_health(timeout: float = 60.0) -> bool:
                 resp = client.get(f"{BASE_URL}/health")
                 if resp.status_code == 200:
                     return True
-        except httpx.HTTPError:
+        except Exception:
             pass
         time.sleep(0.5)
     return False
@@ -52,8 +34,15 @@ def wait_for_health(timeout: float = 60.0) -> bool:
 
 def main() -> int:
     os.chdir(ROOT)
-    ensure_env()
-    ensure_data()
+
+    print("=== OperationAgent bootstrap ===")
+    from app.bootstrap import run_bootstrap
+
+    report = run_bootstrap(install_deps=True, install_browser=True)
+    report.print()
+    if not report.ok:
+        print("Bootstrap failed. Fix network/Python and run again.", file=sys.stderr)
+        return 1
 
     cmd = [
         sys.executable,

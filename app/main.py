@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -5,8 +6,6 @@ from pathlib import Path
 
 # Windows: Playwright needs ProactorEventLoop for subprocess spawn.
 if sys.platform == "win32":
-    import asyncio
-
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
@@ -15,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.accounts import router as accounts_router
 from app.api.content import router as content_router
+from app.api.events import router as events_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.llm_models import router as llm_models_router
@@ -39,7 +39,9 @@ async def lifespan(app: FastAPI):
     from app.db.models import Base
     from app.db.session import engine
     from app.services.chrome_manager import ensure_cdp_ready, shutdown_managed_chrome
+    from app.services.event_bus import set_main_loop
 
+    set_main_loop(asyncio.get_running_loop())
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     run_migrations()
@@ -65,6 +67,7 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(events_router)
 app.include_router(settings_router)
 app.include_router(llm_models_router)
 app.include_router(accounts_router)

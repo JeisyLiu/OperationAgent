@@ -125,6 +125,7 @@ function readinessLabel(id) {
     adapter: "发布引擎",
     windows_event_loop: "运行环境",
     chrome_cdp: "Chrome 连接",
+    playwright_browser: "浏览器引擎",
   };
   return labels[id] || id;
 }
@@ -1637,6 +1638,60 @@ async function restoreWizardSession() {
   }
 }
 
+async function refreshAllPanels() {
+  await Promise.all([
+    refreshReadiness(),
+    refreshDashboard(),
+    refreshAccounts(),
+    refreshContent(),
+    refreshQueue(),
+    refreshWorkerBar(),
+    refreshLlmModels(),
+  ]);
+}
+
+function handleServerEvent(event) {
+  let data;
+  try {
+    data = JSON.parse(event.data);
+  } catch {
+    return;
+  }
+  const type = data.type;
+  const payload = data.payload || {};
+
+  if (type === "hello") return;
+
+  if (type === "job.updated") {
+    refreshDashboard().catch((e) => console.error(e));
+    refreshQueue().catch((e) => console.error(e));
+    const historyId = document.getElementById("history-job-id")?.value;
+    if (historyId && String(payload.job_id) === String(historyId)) {
+      loadJobDetail().catch((e) => console.error(e));
+    }
+    return;
+  }
+
+  if (type === "worker.status") {
+    refreshWorkerBar().catch((e) => console.error(e));
+    return;
+  }
+
+  if (type === "readiness.changed") {
+    refreshReadiness().catch((e) => console.error(e));
+  }
+}
+
+function connectEventStream() {
+  const source = new EventSource("/api/events");
+  source.onmessage = handleServerEvent;
+  source.onerror = () => {
+    // Browser auto-reconnects; no polling fallback
+    console.warn("SSE disconnected, waiting for reconnect…");
+  };
+  return source;
+}
+
 async function init() {
   try {
     const health = await api("/health");
@@ -1652,12 +1707,12 @@ async function init() {
       refreshLlmModels(),
     ]);
     await restoreWizardSession();
-    setInterval(() => {
-      refreshReadiness();
-      refreshDashboard();
-      refreshQueue();
-      refreshWorkerBar();
-    }, 4000);
+    connectEventStream();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refreshAllPanels().catch((e) => console.error(e));
+      }
+    });
   } catch (err) {
     console.error(err);
     showBootError(`UI failed to load: ${err.message}. Hard-refresh the page (Ctrl+F5).`);

@@ -17,8 +17,13 @@ from app.schemas.jobs import (
     RepublishResponse,
 )
 from app.services.job_service import job_service
+from app.services.event_bus import emit_job_updated, emit_readiness_changed
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+def _emit_job(job) -> None:
+    emit_job_updated(job.id, job.status)
 
 
 @router.get("", response_model=list[JobResponse])
@@ -30,13 +35,15 @@ def list_jobs(status: str | None = None, db: Session = Depends(get_db)) -> list[
 def create_job(payload: JobCreate, db: Session = Depends(get_db)) -> JobResponse:
     scheduled_at = payload.scheduled_at or utcnow()
     try:
-        return job_service.create(
+        job = job_service.create(
             db,
             content_variant_id=payload.content_variant_id,
             account_id=payload.account_id,
             scheduled_at=scheduled_at,
             max_retries=payload.max_retries,
         )
+        _emit_job(job)
+        return job
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -53,6 +60,8 @@ def create_jobs_bulk(payload: BulkJobCreate, db: Session = Depends(get_db)) -> B
         for item in payload.items
     ]
     created, failed = job_service.create_bulk(db, items)
+    for job in created:
+        _emit_job(job)
     return BulkJobResponse(
         created=created,
         failed=[BulkJobResultItem(**f) for f in failed],
@@ -73,7 +82,9 @@ def cancel_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     try:
-        return job_service.cancel(db, job)
+        job = job_service.cancel(db, job)
+        _emit_job(job)
+        return job
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -84,7 +95,9 @@ def retry_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     try:
-        return job_service.retry(db, job)
+        job = job_service.retry(db, job)
+        _emit_job(job)
+        return job
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -124,6 +137,8 @@ def republish_job(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    new_job = result["new_job"]
+    _emit_job(new_job)
     return RepublishResponse(**result)
 
 
@@ -146,7 +161,9 @@ def resume_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     try:
-        return job_service.resume_from_human(db, job)
+        job = job_service.resume_from_human(db, job)
+        _emit_job(job)
+        return job
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

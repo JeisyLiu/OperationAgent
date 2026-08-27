@@ -132,6 +132,28 @@ def _check_windows_event_loop() -> ReadinessCheck | None:
     return ReadinessCheck("windows_event_loop", CheckStatus.OK, "Windows 浏览器环境正常")
 
 
+def _check_playwright_browser(*, auto_heal: bool = False) -> ReadinessCheck:
+    from app.services.playwright_browser import chromium_ready, ensure_chromium
+
+    if auto_heal and not chromium_ready():
+        ok, msg = ensure_chromium()
+        if not ok:
+            return ReadinessCheck(
+                "playwright_browser",
+                CheckStatus.FAIL,
+                msg,
+                fix="点「重试修复」；需能访问外网以下载浏览器。",
+            )
+    if chromium_ready():
+        return ReadinessCheck("playwright_browser", CheckStatus.OK, "浏览器引擎已就绪")
+    return ReadinessCheck(
+        "playwright_browser",
+        CheckStatus.FAIL,
+        "浏览器引擎未安装",
+        fix="点「重试修复」，程序会自动下载安装。",
+    )
+
+
 def _check_chrome_cdp(*, auto_heal: bool = False) -> ReadinessCheck | None:
     if default_adapter_name() != "chrome_devtools":
         return None
@@ -174,7 +196,7 @@ def _first_time_guide(checks: list[ReadinessCheck]) -> list[str]:
     failing = {c.id for c in checks if c.status == CheckStatus.FAIL}
     if "active_accounts" in {c.id for c in checks if c.status == CheckStatus.WARN}:
         steps.insert(0, "先完成账号「登录并启用」")
-    if "chrome_cdp" in failing or "worker" in failing:
+    if "chrome_cdp" in failing or "worker" in failing or "playwright_browser" in failing:
         steps.insert(0, "点「重试修复」，程序会自动处理")
     return steps
 
@@ -184,6 +206,7 @@ def run_readiness(db: Session, *, auto_heal: bool = False) -> dict:
         _check_database(db),
         _check_worker(),
         _check_adapter(),
+        _check_playwright_browser(auto_heal=auto_heal),
         _check_llm(db),
         _check_active_accounts(db),
     ]
@@ -215,13 +238,19 @@ def run_readiness(db: Session, *, auto_heal: bool = False) -> dict:
 
 
 async def heal_and_readiness(db: Session) -> dict:
-    """Auto-fix worker lock / CDP, then return readiness + action log."""
+    """Auto-fix worker / Playwright / CDP, then return readiness."""
+    from app.bootstrap import ensure_playwright_browser
     from app.services.chrome_manager import ensure_cdp_ready
 
     actions: list[dict] = []
 
     ok, msg = await worker.ensure_running()
     actions.append({"id": "worker", "ok": ok, "message": msg})
+
+    browser_step = ensure_playwright_browser()
+    actions.append(
+        {"id": "playwright_browser", "ok": browser_step.ok, "message": browser_step.message}
+    )
 
     if default_adapter_name() == "chrome_devtools":
         cdp_ok, cdp_msg = ensure_cdp_ready()

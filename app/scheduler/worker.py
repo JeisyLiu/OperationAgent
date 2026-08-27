@@ -18,6 +18,7 @@ from app.constants import FailureCode, JobStatus, NON_RETRYABLE_FAILURES, StepSt
 from app.db.session import SessionLocal
 from app.services.account_service import account_service
 from app.services.content_service import content_service
+from app.services.event_bus import emit_job_updated, emit_worker_status, publish
 from app.services.job_service import job_service
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,12 @@ class SchedulerWorker:
             "adapter_status": self._adapter.get_status().value,
         }
 
+    def _notify_worker_status(self) -> None:
+        emit_worker_status(self.get_status())
+
+    async def _notify_job_updated(self, job_id: int, status: str) -> None:
+        await publish("job.updated", {"job_id": job_id, "status": status})
+
     async def _loop(self) -> None:
         while self._running:
             try:
@@ -225,14 +232,18 @@ class SchedulerWorker:
 
     async def _run_job(self, db, job) -> None:
         self._current_job_id = job.id
+        self._notify_worker_status()
         try:
             job.status = JobStatus.EXECUTING.value
             db.commit()
+            await self._notify_job_updated(job.id, job.status)
 
             account = account_service.get(db, job.account_id)
             variant = content_service.get_variant(db, job.content_variant_id)
             if account is None or variant is None:
                 job_service.mark_failed(db, job, "Missing account or variant")
+                db.refresh(job)
+                await self._notify_job_updated(job.id, job.status)
                 return
 
             prompt = job_service.build_task_prompt(db, job)
@@ -321,6 +332,8 @@ class SchedulerWorker:
                     status=StepStatus.SUCCESS.value,
                     tool_name="channel",
                 )
+                db.refresh(job)
+                await self._notify_job_updated(job.id, job.status)
             elif result.error_code in NON_RETRYABLE_FAILURES:
                 fail_message = ensure_failure_message(
                     self._current_adapter_name or adapter_name, result.message
@@ -354,6 +367,8 @@ class SchedulerWorker:
                         ensure_ascii=False,
                     ),
                 )
+                db.refresh(job)
+                await self._notify_job_updated(job.id, job.status)
             else:
                 fail_message = ensure_failure_message(
                     self._current_adapter_name or adapter_name, result.message
@@ -375,8 +390,11 @@ class SchedulerWorker:
                         ensure_ascii=False,
                     ),
                 )
+                db.refresh(job)
+                await self._notify_job_updated(job.id, job.status)
         finally:
             self._current_job_id = None
+            self._notify_worker_status()
 
 
 worker = SchedulerWorker()

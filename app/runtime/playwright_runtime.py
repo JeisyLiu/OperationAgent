@@ -3,6 +3,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 from app.runtime.base import ComputerRuntime
+from app.services.playwright_browser import ensure_chromium, is_missing_browser_error
 
 
 class PlaywrightRuntime(ComputerRuntime):
@@ -13,6 +14,18 @@ class PlaywrightRuntime(ComputerRuntime):
 
     async def open_profile(self, profile_path: Path, url: str | None = None) -> None:
         profile_path.mkdir(parents=True, exist_ok=True)
+        try:
+            await self._launch(profile_path, url)
+        except Exception as exc:
+            if not is_missing_browser_error(exc):
+                raise
+            ok, msg = ensure_chromium()
+            if not ok:
+                raise RuntimeError(msg) from exc
+            await self.close()
+            await self._launch(profile_path, url)
+
+    async def _launch(self, profile_path: Path, url: str | None = None) -> None:
         self._playwright = await async_playwright().start()
         self._context = await self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_path.resolve()),
