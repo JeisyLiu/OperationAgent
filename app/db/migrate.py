@@ -110,6 +110,66 @@ CREATE TABLE IF NOT EXISTS operation_steps (
 )
 """
 
+PROMO_RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS promo_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    variant_id INTEGER NOT NULL,
+    asset_id INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    platform VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    tags_json TEXT,
+    operation_run_id INTEGER,
+    error_message TEXT,
+    created_at DATETIME,
+    completed_at DATETIME,
+    FOREIGN KEY (variant_id) REFERENCES content_variants(id),
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+)
+"""
+
+PROMO_TARGETS_DDL = """
+CREATE TABLE IF NOT EXISTS promo_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    tag VARCHAR(128) NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT,
+    description TEXT,
+    status VARCHAR(32) NOT NULL DEFAULT 'ok',
+    error_message TEXT,
+    FOREIGN KEY (run_id) REFERENCES promo_runs(id)
+)
+"""
+
+PROMO_COMMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS promo_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    target_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'draft',
+    created_at DATETIME,
+    FOREIGN KEY (run_id) REFERENCES promo_runs(id),
+    FOREIGN KEY (target_id) REFERENCES promo_targets(id)
+)
+"""
+
+PROMO_SEEN_URLS_DDL = """
+CREATE TABLE IF NOT EXISTS promo_seen_urls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    platform VARCHAR(32) NOT NULL,
+    url TEXT NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'seen',
+    first_seen_at DATETIME,
+    last_seen_at DATETIME,
+    promo_run_id INTEGER,
+    FOREIGN KEY (account_id) REFERENCES accounts(id),
+    UNIQUE(account_id, platform, url)
+)
+"""
+
 
 def run_migrations() -> None:
     """Lightweight SQLite migrations for MVP (add missing columns / tables)."""
@@ -134,7 +194,17 @@ def run_migrations() -> None:
         conn.execute(text(CUSTOM_PLATFORMS_DDL))
         conn.execute(text(OPERATION_RUNS_DDL))
         conn.execute(text(OPERATION_STEPS_DDL))
-        logger.info("Migration: ensured skill_roles, custom_platforms, and operation audit tables exist")
+        conn.execute(text(PROMO_RUNS_DDL))
+        conn.execute(text(PROMO_TARGETS_DDL))
+        conn.execute(text(PROMO_COMMENTS_DDL))
+        conn.execute(text(PROMO_SEEN_URLS_DDL))
+        table_names = set(inspect(engine).get_table_names())
+        if "promo_runs" in table_names:
+            promo_cols = {col["name"] for col in inspect(engine).get_columns("promo_runs")}
+            if "operation_run_id" not in promo_cols:
+                conn.execute(text("ALTER TABLE promo_runs ADD COLUMN operation_run_id INTEGER"))
+                logger.info("Migration: added promo_runs.operation_run_id")
+        logger.info("Migration: ensured skill_roles, custom_platforms, operation audit, and promo tables exist")
 
         if "accounts" in table_names:
             account_columns = {col["name"] for col in inspector.get_columns("accounts")}
@@ -163,6 +233,22 @@ def run_migrations() -> None:
                         text(f"ALTER TABLE execution_logs ADD COLUMN {col_name} {col_type}")
                     )
                     logger.info("Migration: added execution_logs.%s", col_name)
+            columns = {col["name"] for col in inspect(engine).get_columns("execution_logs")}
+            if "subject_type" not in columns:
+                conn.execute(text("ALTER TABLE execution_logs ADD COLUMN subject_type VARCHAR(32)"))
+                logger.info("Migration: added execution_logs.subject_type")
+            if "subject_id" not in columns:
+                conn.execute(text("ALTER TABLE execution_logs ADD COLUMN subject_id INTEGER"))
+                logger.info("Migration: added execution_logs.subject_id")
+            columns = {col["name"] for col in inspect(engine).get_columns("execution_logs")}
+            if "subject_type" in columns and "subject_id" in columns:
+                conn.execute(
+                    text(
+                        "UPDATE execution_logs SET subject_type='job', subject_id=job_id "
+                        "WHERE subject_type IS NULL OR subject_id IS NULL"
+                    )
+                )
+                logger.info("Migration: backfilled execution_logs subject columns")
 
     _migrate_ai_settings_to_llm_models()
     _seed_skill_templates()

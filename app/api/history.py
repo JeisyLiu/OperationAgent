@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api", tags=["history"])
 _KIND_LABELS = {
     "generate": "生成内容包",
     "rewrite": "LLM 重写内容包",
+    "promo": "评论推广",
     "publish": "推送任务",
 }
 
@@ -35,6 +36,8 @@ def _operation_title(run: OperationRun) -> str:
     count = len(account_ids)
     if run.kind == "rewrite":
         return f"{label}"
+    if run.kind == "promo":
+        return run.summary or label
     if count:
         return f"{label} · {count} 账号"
     return label
@@ -53,9 +56,9 @@ def list_history(
 ) -> HistoryListResponse:
     items: list[HistoryItemResponse] = []
 
-    if kind is None or kind in ("generate", "rewrite"):
+    if kind is None or kind in ("generate", "rewrite", "promo"):
         op_query = db.query(OperationRun)
-        if kind in ("generate", "rewrite"):
+        if kind in ("generate", "rewrite", "promo"):
             op_query = op_query.filter(OperationRun.kind == kind)
         for run in op_query.all():
             items.append(

@@ -21,6 +21,7 @@ from app.api.history import router as history_router
 from app.api.jobs import router as jobs_router
 from app.api.llm_models import router as llm_models_router
 from app.api.settings import router as settings_router
+from app.api.promo import router as promo_router
 from app.api.platforms import router as platforms_router
 from app.api.worker import router as worker_router
 from app.config import APP_VERSION, settings
@@ -77,6 +78,7 @@ app.include_router(accounts_router)
 app.include_router(content_router)
 app.include_router(jobs_router)
 app.include_router(history_router)
+app.include_router(promo_router)
 app.include_router(platforms_router)
 app.include_router(worker_router)
 

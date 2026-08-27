@@ -17,6 +17,7 @@ from app.constants import (
     utcnow,
 )
 from app.db.models import ExecutionLog, PublishJob
+from app.services.execution_log_service import SUBJECT_JOB, execution_log_service
 from app.platforms import is_publishable, require_platform
 from app.services.account_service import account_service
 from app.services.content_service import content_service
@@ -334,12 +335,7 @@ class JobService:
         }
 
     def get_logs(self, db: Session, job_id: int) -> list[ExecutionLog]:
-        return (
-            db.query(ExecutionLog)
-            .filter(ExecutionLog.job_id == job_id)
-            .order_by(ExecutionLog.id.asc())
-            .all()
-        )
+        return execution_log_service.get_logs_for_job(db, job_id)
 
     def add_log(
         self,
@@ -358,8 +354,10 @@ class JobService:
         payload_json: str | None = None,
         started_at: datetime | None = None,
     ) -> ExecutionLog:
-        log = ExecutionLog(
-            job_id=job_id,
+        return execution_log_service.add_log(
+            db,
+            subject_type=SUBJECT_JOB,
+            subject_id=job_id,
             step=step,
             message=message,
             screenshot_path=screenshot_path,
@@ -372,34 +370,17 @@ class JobService:
             payload_json=payload_json,
             started_at=started_at,
         )
-        db.add(log)
-        db.commit()
-        db.refresh(log)
-        return log
 
     def add_step_event(self, db: Session, *, job_id: int, event: StepEvent) -> ExecutionLog:
-        payload = dict(event.payload or {})
-        payload["phase"] = event.phase
-        return self.add_log(
+        return execution_log_service.add_step_event(
             db,
-            job_id=job_id,
-            step=f"{event.phase}-{event.step}",
-            message=event.message,
-            screenshot_path=event.screenshot_path,
-            tool_name=event.tool_name,
-            status=event.status,
-            duration_ms=event.duration_ms,
-            prompt_tokens=event.prompt_tokens,
-            completion_tokens=event.completion_tokens,
-            total_tokens=event.total_tokens,
-            payload_json=json.dumps(payload, ensure_ascii=False),
+            subject_type=SUBJECT_JOB,
+            subject_id=job_id,
+            event=event,
         )
 
     def build_step_callback(self, db: Session, job_id: int):
-        def on_step(event: StepEvent) -> None:
-            self.add_step_event(db, job_id=job_id, event=event)
-
-        return on_step
+        return execution_log_service.build_step_callback(db, SUBJECT_JOB, job_id)
 
     def get_job_detail(self, db: Session, job_id: int) -> dict | None:
         job = self.get(db, job_id)

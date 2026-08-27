@@ -52,7 +52,9 @@ class BulkJobResponse(BaseModel):
 
 class ExecutionLogResponse(BaseModel):
     id: int
-    job_id: int
+    job_id: int | None = None
+    subject_type: str = "job"
+    subject_id: int
     step: str
     message: str | None = None
     screenshot_path: str | None = None

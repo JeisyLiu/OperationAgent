@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260827n" />
+  <link rel="stylesheet" href="/static/style.css?v=20260827s" />
 </head>
 <body>
   <div class="layout">
@@ -346,6 +346,37 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260827n"></script>
+  <div id="comment-promo-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-promo-modal></div>
+    <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true" aria-labelledby="comment-promo-modal-title">
+      <div class="modal-header">
+        <h3 id="comment-promo-modal-title">评论推广</h3>
+        <button type="button" class="modal-close" data-close-promo-modal aria-label="关闭">×</button>
+      </div>
+      <div id="comment-promo-modal-body" class="modal-body promo-modal-body">
+        <div id="comment-promo-status-bar" class="promo-status-bar">
+          <div class="hint">加载中…</div>
+        </div>
+        <section class="promo-activity-section">
+          <h4 class="promo-section-title">活动流</h4>
+          <ol id="comment-promo-activity" class="step-line promo-activity"></ol>
+        </section>
+        <section class="promo-results-section">
+          <h4 class="promo-section-title">结果</h4>
+          <div id="comment-promo-results">
+            <div class="hint">暂无结果</div>
+          </div>
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="comment-promo-abort" class="danger" hidden>中止</button>
+        <button type="button" id="comment-promo-retry" hidden>重试</button>
+        <button type="button" id="comment-promo-start" hidden>开始扫描</button>
+        <button type="button" data-close-promo-modal>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=20260827t"></script>
 </body>
 </html>

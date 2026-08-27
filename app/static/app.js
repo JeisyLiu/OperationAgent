@@ -1177,6 +1177,7 @@ function renderReviewPackages() {
           </div>
           <div class="package-card-actions">
             <button type="button" data-rewrite-variant="${v.id}">LLM 重写</button>
+            ${promoButtonHtml(v)}
           </div>
           <label>Title
             <input type="text" data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
@@ -1214,6 +1215,7 @@ function renderReviewPackages() {
   container.querySelectorAll("[data-rewrite-variant]").forEach((btn) => {
     btn.onclick = () => rewritePackageVariant(Number(btn.dataset.rewriteVariant), btn).catch((e) => alert(e.message));
   });
+  wirePromoButtons(container);
   wireAccountSkillLinks(container);
 }
 
@@ -1270,6 +1272,16 @@ function collectReviewEdits() {
   return Object.values(byId);
 }
 
+function isPromoPlatform(platformId) {
+  return platformId === "rednote" || platformId === "bilibili";
+}
+
+function promoButtonHtml(variant) {
+  const enabled = isPromoPlatform(variant.platform);
+  const title = enabled ? "按母帖标签搜索并生成评论草稿" : "评论推广仅支持小红书与 B 站";
+  return `<button type="button" data-promo-variant="${variant.id}" data-promo-platform="${escapeHtml(variant.platform || "")}" title="${escapeHtml(title)}">评论推广</button>`;
+}
+
 function wireAccountSkillLinks(container) {
   if (!container) return;
   container.querySelectorAll("[data-open-account-skill]").forEach((link) => {
@@ -1280,6 +1292,437 @@ function wireAccountSkillLinks(container) {
     };
   });
 }
+
+let promoModalVariantId = null;
+let promoPollTimer = null;
+let promoCurrentRunId = null;
+let promoLastLogId = 0;
+
+const PROMO_ACTIVE_STATUSES = ["pending", "discovering", "generating", "cancelling"];
+const PROMO_RETRY_STATUSES = ["ready", "partial", "failed", "cancelled"];
+
+function wirePromoButtons(container) {
+  if (!container) return;
+  container.querySelectorAll("[data-promo-variant]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const platform = btn.dataset.promoPlatform || "";
+      if (!isPromoPlatform(platform)) {
+        alert("评论推广仅支持小红书与 B 站");
+        return;
+      }
+      openCommentPromoModal(Number(btn.dataset.promoVariant)).catch((err) => alert(err.message || String(err)));
+    };
+  });
+}
+
+function showCommentPromoModalEl() {
+  const modal = document.getElementById("comment-promo-modal");
+  if (!modal) {
+    alert("评论推广弹窗未加载，请硬刷新页面（Ctrl+F5）后再试。");
+    return null;
+  }
+  modal.hidden = false;
+  modal.removeAttribute("hidden");
+  return modal;
+}
+
+function closeCommentPromoModal() {
+  const modal = document.getElementById("comment-promo-modal");
+  if (modal) {
+    modal.hidden = true;
+    modal.setAttribute("hidden", "");
+  }
+  promoModalVariantId = null;
+  promoCurrentRunId = null;
+  promoLastLogId = 0;
+  if (promoPollTimer) {
+    clearInterval(promoPollTimer);
+    promoPollTimer = null;
+  }
+}
+
+function promoStatusLabel(status) {
+  const labels = {
+    pending: "排队中",
+    discovering: "扫描视频中…",
+    generating: "生成评论中…",
+    cancelling: "正在中止…",
+    cancelled: "已中止",
+    ready: "完成",
+    partial: "部分完成",
+    failed: "失败",
+  };
+  return labels[status] || status;
+}
+
+function renderPromoActivityStep(step, index) {
+  const payload = parseStepPayload(step);
+  const stepStatus = String(step.status || "running").toLowerCase();
+  const title = step.tool_name ? `${step.step} · ${step.tool_name}` : step.step;
+  const summary = step.message ? escapeHtml(step.message.slice(0, 160)) : "";
+  const payloadText = JSON.stringify(payload, null, 2);
+  return `
+    <li class="step-line-item status-${stepStatus}" data-promo-log-id="${step.id}">
+      <span class="step-dot" aria-hidden="true"></span>
+      <div class="step-head">
+        <span class="step-title">${escapeHtml(title)}</span>
+        <span class="step-meta">${formatDuration(step.duration_ms)} · Token ${formatTokens(step.total_tokens)}</span>
+        <button type="button" class="step-toggle" data-promo-step-toggle="${index}">展开</button>
+      </div>
+      ${summary ? `<div class="step-meta">${summary}</div>` : ""}
+      <div class="step-body" hidden data-promo-step-body="${index}">
+        <div>状态：${escapeHtml(step.status || "—")}</div>
+        <div>Prompt tokens：${formatTokens(step.prompt_tokens)} · Completion：${formatTokens(step.completion_tokens)}</div>
+        ${step.message ? `<div>消息：${escapeHtml(step.message)}</div>` : ""}
+        ${Object.keys(payload).length ? `<pre>${escapeHtml(payloadText)}</pre>` : ""}
+      </div>
+    </li>`;
+}
+
+function appendPromoActivityLogs(logs) {
+  const activity = document.getElementById("comment-promo-activity");
+  if (!activity || !logs?.length) return;
+  const existingIds = new Set(
+    [...activity.querySelectorAll("[data-promo-log-id]")].map((el) => Number(el.dataset.promoLogId))
+  );
+  const baseIndex = activity.querySelectorAll(".step-line-item").length;
+  const fresh = logs.filter((log) => !existingIds.has(log.id));
+  if (!fresh.length) return;
+  activity.insertAdjacentHTML(
+    "beforeend",
+    fresh.map((step, offset) => renderPromoActivityStep(step, baseIndex + offset)).join("")
+  );
+  activity.querySelectorAll("[data-promo-step-toggle]").forEach((btn) => {
+    if (btn.dataset.promoWired) return;
+    btn.dataset.promoWired = "1";
+    btn.onclick = () => {
+      const body = activity.querySelector(`[data-promo-step-body="${btn.dataset.promoStepToggle}"]`);
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.textContent = open ? "收起" : "展开";
+    };
+  });
+  activity.scrollTop = activity.scrollHeight;
+}
+
+function resetPromoActivity(logs) {
+  const activity = document.getElementById("comment-promo-activity");
+  if (!activity) return;
+  activity.innerHTML = (logs || []).map((step, index) => renderPromoActivityStep(step, index)).join("");
+  promoLastLogId = logs?.length ? logs[logs.length - 1].id : 0;
+  activity.querySelectorAll("[data-promo-step-toggle]").forEach((btn) => {
+    btn.dataset.promoWired = "1";
+    btn.onclick = () => {
+      const body = activity.querySelector(`[data-promo-step-body="${btn.dataset.promoStepToggle}"]`);
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.textContent = open ? "收起" : "展开";
+    };
+  });
+}
+
+function updatePromoToolbar(run) {
+  const startBtn = document.getElementById("comment-promo-start");
+  const abortBtn = document.getElementById("comment-promo-abort");
+  const retryBtn = document.getElementById("comment-promo-retry");
+  const active = PROMO_ACTIVE_STATUSES.includes(run.status);
+  const canRetry = PROMO_RETRY_STATUSES.includes(run.status);
+
+  if (startBtn) {
+    startBtn.hidden = active;
+    startBtn.disabled = active;
+    if (active) startBtn.setAttribute("hidden", "");
+    else startBtn.removeAttribute("hidden");
+  }
+  if (abortBtn) {
+    abortBtn.hidden = !active || run.status === "cancelling";
+    if (!active || run.status === "cancelling") abortBtn.setAttribute("hidden", "");
+    else abortBtn.removeAttribute("hidden");
+  }
+  if (retryBtn) {
+    retryBtn.hidden = !canRetry;
+    if (!canRetry) retryBtn.setAttribute("hidden", "");
+    else retryBtn.removeAttribute("hidden");
+  }
+}
+
+function updatePromoStatusBar(run) {
+  const bar = document.getElementById("comment-promo-status-bar");
+  if (!bar) return;
+  const tags = (run.tags || []).map((t) => `<span class="promo-tag">${escapeHtml(t)}</span>`).join("");
+  bar.innerHTML = `
+    <div class="promo-status">状态：<strong>${escapeHtml(promoStatusLabel(run.status))}</strong></div>
+    ${run.error_message ? `<div class="hint warn">${escapeHtml(run.error_message)}</div>` : ""}
+    <div>搜索标签：${tags || "—"}</div>
+    <p class="hint">使用母帖标签搜索相关视频，为每条视频生成 5 条评论草稿（不自动发送）。</p>
+  `;
+}
+
+function renderPromoResults(run) {
+  const results = document.getElementById("comment-promo-results");
+  if (!results) return;
+  const active = PROMO_ACTIVE_STATUSES.includes(run.status);
+
+  if (!run.targets?.length) {
+    results.innerHTML = active
+      ? `<div class="hint">扫描进行中，请查看上方活动流…</div>`
+      : `<div class="hint">暂无结果，点击开始扫描。</div>`;
+    return;
+  }
+
+  const byTag = {};
+  run.targets.forEach((target) => {
+    if (!byTag[target.tag]) byTag[target.tag] = [];
+    byTag[target.tag].push(target);
+  });
+  results.innerHTML = Object.entries(byTag)
+    .map(([tag, items]) => {
+      const rows = items
+        .map((target) => {
+          const comments = (target.comments || [])
+            .map(
+              (c) => `
+            <div class="promo-comment-row" data-comment-id="${c.id}">
+              <textarea data-promo-comment-edit="${c.id}">${escapeHtml(c.body)}</textarea>
+              <button type="button" data-promo-comment-delete="${c.id}" class="danger">删除</button>
+            </div>`
+            )
+            .join("");
+          return `
+          <div class="promo-target">
+            <div><strong>${escapeHtml(target.title || "无标题")}</strong></div>
+            <div class="meta">${escapeHtml(target.url)}</div>
+            <div class="meta">${escapeHtml((target.description || "").slice(0, 200))}</div>
+            ${comments || `<div class="hint">暂无评论草稿</div>`}
+          </div>`;
+        })
+        .join("");
+      return `<div class="promo-group"><h4>标签：${escapeHtml(tag)}</h4>${rows}</div>`;
+    })
+    .join("");
+
+  results.querySelectorAll("[data-promo-comment-edit]").forEach((el) => {
+    el.addEventListener("change", () => {
+      api(`/api/promo/comments/${el.dataset.promoCommentEdit}`, {
+        method: "PATCH",
+        body: JSON.stringify({ body: el.value }),
+      }).catch((err) => alert(err.message));
+    });
+  });
+  results.querySelectorAll("[data-promo-comment-delete]").forEach((btn) => {
+    btn.onclick = () => {
+      if (!confirm("删除这条评论草稿？")) return;
+      api(`/api/promo/comments/${btn.dataset.promoCommentDelete}`, { method: "DELETE" })
+        .then(() => loadCommentPromoRun(promoCurrentRunId, { refreshResultsOnly: true }))
+        .catch((err) => alert(err.message));
+    };
+  });
+}
+
+function renderCommentPromoRun(run, { resetActivity = false } = {}) {
+  updatePromoStatusBar(run);
+  updatePromoToolbar(run);
+  if (resetActivity) {
+    resetPromoActivity(run.logs || []);
+  } else if (run.logs?.length) {
+    appendPromoActivityLogs(run.logs);
+    promoLastLogId = run.logs[run.logs.length - 1].id;
+  }
+  renderPromoResults(run);
+}
+
+async function loadCommentPromoRun(runId, { refreshResultsOnly = false } = {}) {
+  if (!runId) return;
+  const qs = promoLastLogId && !refreshResultsOnly ? `?since_id=${promoLastLogId}` : "";
+  const run = await api(`/api/promo/runs/${runId}${qs}`);
+  promoCurrentRunId = run.id;
+  if (refreshResultsOnly) {
+    renderPromoResults(run);
+    updatePromoToolbar(run);
+    updatePromoStatusBar(run);
+  } else {
+    renderCommentPromoRun(run, { resetActivity: !promoLastLogId && !qs.includes("since_id") });
+    if (run.logs?.length) {
+      promoLastLogId = run.logs[run.logs.length - 1].id;
+    }
+  }
+  return run;
+}
+
+function startPromoPolling(runId) {
+  if (promoPollTimer) clearInterval(promoPollTimer);
+  promoPollTimer = setInterval(() => {
+    loadCommentPromoRun(runId)
+      .then((run) => {
+        if (!run) return;
+        if (!PROMO_ACTIVE_STATUSES.includes(run.status)) {
+          clearInterval(promoPollTimer);
+          promoPollTimer = null;
+          refreshHistoryTimeline().catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, 2000);
+}
+
+async function openCommentPromoModal(variantId) {
+  promoModalVariantId = variantId;
+  promoLastLogId = 0;
+  const modal = showCommentPromoModalEl();
+  const statusBar = document.getElementById("comment-promo-status-bar");
+  const activity = document.getElementById("comment-promo-activity");
+  const results = document.getElementById("comment-promo-results");
+  const startBtn = document.getElementById("comment-promo-start");
+  if (!modal) return;
+  if (statusBar) statusBar.innerHTML = `<div class="hint">加载中…</div>`;
+  if (activity) activity.innerHTML = "";
+  if (results) results.innerHTML = `<div class="hint">加载中…</div>`;
+  if (startBtn) {
+    startBtn.hidden = true;
+    startBtn.setAttribute("hidden", "");
+  }
+
+  try {
+    const listing = await api(`/api/promo/runs?variant_id=${variantId}&limit=5`);
+    const items = listing.items || [];
+    const active = items.find((r) => PROMO_ACTIVE_STATUSES.includes(r.status));
+    if (active) {
+      promoCurrentRunId = active.id;
+      renderCommentPromoRun(active, { resetActivity: true });
+      promoLastLogId = active.logs?.length ? active.logs[active.logs.length - 1].id : 0;
+      startPromoPolling(active.id);
+      return;
+    }
+    const latest = items[0];
+    if (latest && PROMO_RETRY_STATUSES.includes(latest.status)) {
+      promoCurrentRunId = latest.id;
+      renderCommentPromoRun(latest, { resetActivity: true });
+      promoLastLogId = latest.logs?.length ? latest.logs[latest.logs.length - 1].id : 0;
+      return;
+    }
+    promoCurrentRunId = null;
+    if (statusBar) {
+      statusBar.innerHTML = `
+        <p class="hint">将使用母帖标签在小红书/B 站搜索相关视频，每条视频生成 5 条评论草稿。</p>
+        <p class="hint">点击「开始扫描」启动（需账号已登录且为 ACTIVE）。</p>
+      `;
+    }
+    if (results) results.innerHTML = `<div class="hint">暂无结果</div>`;
+    if (startBtn) {
+      startBtn.hidden = false;
+      startBtn.removeAttribute("hidden");
+    }
+  } catch (err) {
+    const message = typeof err?.message === "string" ? err.message : String(err);
+    if (statusBar) statusBar.innerHTML = `<div class="hint warn">加载失败：${escapeHtml(message)}</div>`;
+    if (results) results.innerHTML = "";
+    if (startBtn) {
+      startBtn.hidden = false;
+      startBtn.removeAttribute("hidden");
+    }
+  }
+}
+
+async function startCommentPromoScan() {
+  if (!promoModalVariantId) return;
+  const ok = confirm(
+    "评论推广将调用 LLM：\n" +
+      "1) 浏览器 Agent 按标签搜索并读取视频信息\n" +
+      "2) 为每条视频生成 5 条评论草稿\n\n" +
+      "可能产生较多 Token 消耗，是否继续？"
+  );
+  if (!ok) return;
+  const startBtn = document.getElementById("comment-promo-start");
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = "启动中…";
+  }
+  try {
+    promoLastLogId = 0;
+    const run = await api("/api/promo/runs", {
+      method: "POST",
+      body: JSON.stringify({ variant_id: promoModalVariantId }),
+    });
+    promoCurrentRunId = run.id;
+    renderCommentPromoRun(run, { resetActivity: true });
+    promoLastLogId = run.logs?.length ? run.logs[run.logs.length - 1].id : 0;
+    startPromoPolling(run.id);
+    refreshHistoryTimeline().catch(() => {});
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = "开始扫描";
+    }
+  }
+}
+
+async function abortCommentPromoRun() {
+  if (!promoCurrentRunId) return;
+  if (!confirm("确定要中止当前扫描任务？")) return;
+  const abortBtn = document.getElementById("comment-promo-abort");
+  if (abortBtn) abortBtn.disabled = true;
+  try {
+    const run = await api(`/api/promo/runs/${promoCurrentRunId}/abort`, { method: "POST" });
+    renderCommentPromoRun(run);
+    startPromoPolling(promoCurrentRunId);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (abortBtn) abortBtn.disabled = false;
+  }
+}
+
+async function retryCommentPromoRun() {
+  if (!promoCurrentRunId) return;
+  const ok = confirm(
+    "将重新启动评论推广任务。\n已扫描过的 URL 会自动跳过。\n可能产生 Token 消耗，是否继续？"
+  );
+  if (!ok) return;
+  const retryBtn = document.getElementById("comment-promo-retry");
+  if (retryBtn) retryBtn.disabled = true;
+  try {
+    promoLastLogId = 0;
+    const run = await api(`/api/promo/runs/${promoCurrentRunId}/retry`, { method: "POST" });
+    promoCurrentRunId = run.id;
+    renderCommentPromoRun(run, { resetActivity: true });
+    promoLastLogId = run.logs?.length ? run.logs[run.logs.length - 1].id : 0;
+    startPromoPolling(run.id);
+    refreshHistoryTimeline().catch(() => {});
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (retryBtn) retryBtn.disabled = false;
+  }
+}
+
+document.querySelectorAll("[data-close-promo-modal]").forEach((el) => {
+  el.addEventListener("click", () => closeCommentPromoModal());
+});
+
+document.getElementById("comment-promo-start")?.addEventListener("click", () => {
+  startCommentPromoScan().catch((e) => alert(e.message));
+});
+
+document.getElementById("comment-promo-abort")?.addEventListener("click", () => {
+  abortCommentPromoRun().catch((e) => alert(e.message));
+});
+
+document.getElementById("comment-promo-retry")?.addEventListener("click", () => {
+  retryCommentPromoRun().catch((e) => alert(e.message));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const promoModal = document.getElementById("comment-promo-modal");
+  if (promoModal && !promoModal.hidden) closeCommentPromoModal();
+});
+
 
 let pendingAccountSkillId = null;
 
@@ -1523,6 +1966,7 @@ function renderPackagesTable(resp) {
           <div class="actions">
             <button type="button" data-open-package="${v.id}">Open</button>
             <button type="button" data-rewrite-package="${v.id}">LLM 重写</button>
+            ${promoButtonHtml(v)}
             <button type="button" data-resume-asset="${v.asset_id}">Resume asset</button>
             ${canDelete ? `<button type="button" data-delete-package="${v.id}" class="danger">Delete</button>` : ""}
           </div>
@@ -1555,6 +1999,7 @@ function renderPackagesTable(resp) {
   container.querySelectorAll("[data-rewrite-package]").forEach((btn) => {
     btn.onclick = () => rewritePackageVariant(Number(btn.dataset.rewritePackage), btn).catch((e) => alert(e.message));
   });
+  wirePromoButtons(container);
   container.querySelectorAll("[data-resume-asset]").forEach((btn) => {
     btn.onclick = () => resumeWizardAsset(Number(btn.dataset.resumeAsset)).catch((e) => alert(e.message));
   });
@@ -2098,7 +2543,7 @@ function openJobDetail(jobId) {
 }
 
 function historyKindLabel(kind) {
-  const labels = { generate: "生成", rewrite: "重写", publish: "推送" };
+  const labels = { generate: "生成", rewrite: "重写", promo: "评论推广", publish: "推送" };
   return labels[kind] || kind;
 }
 

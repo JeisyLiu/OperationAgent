@@ -161,7 +161,9 @@ class ExecutionLog(Base):
     __tablename__ = "execution_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("publish_jobs.id"), nullable=False)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("publish_jobs.id"), nullable=True)
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False, default="job")
+    subject_id: Mapped[int] = mapped_column(Integer, nullable=False)
     step: Mapped[str] = mapped_column(String(64), nullable=False)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     screenshot_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -175,7 +177,7 @@ class ExecutionLog(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    job: Mapped["PublishJob"] = relationship(back_populates="logs")
+    job: Mapped["PublishJob | None"] = relationship(back_populates="logs")
 
 
 class OperationRun(Base):
@@ -224,3 +226,65 @@ class OperationStep(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     run: Mapped["OperationRun"] = relationship(back_populates="steps")
+
+
+class PromoRun(Base):
+    __tablename__ = "promo_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("content_variants.id"), nullable=False)
+    asset_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operation_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    targets: Mapped[list["PromoTarget"]] = relationship(back_populates="run")
+    comments: Mapped[list["PromoComment"]] = relationship(back_populates="run")
+
+
+class PromoTarget(Base):
+    __tablename__ = "promo_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("promo_runs.id"), nullable=False)
+    tag: Mapped[str] = mapped_column(String(128), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ok")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    run: Mapped["PromoRun"] = relationship(back_populates="targets")
+    comments: Mapped[list["PromoComment"]] = relationship(back_populates="target")
+
+
+class PromoComment(Base):
+    __tablename__ = "promo_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("promo_runs.id"), nullable=False)
+    target_id: Mapped[int] = mapped_column(ForeignKey("promo_targets.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    run: Mapped["PromoRun"] = relationship(back_populates="comments")
+    target: Mapped["PromoTarget"] = relationship(back_populates="comments")
+
+
+class PromoSeenUrl(Base):
+    __tablename__ = "promo_seen_urls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="seen")
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    promo_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -73,6 +73,8 @@ def test_execution_log_migration_columns_exist():
         "total_tokens",
         "payload_json",
         "started_at",
+        "subject_type",
+        "subject_id",
     ):
         assert name in columns
 
