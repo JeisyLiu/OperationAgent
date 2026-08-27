@@ -176,3 +176,51 @@ class ExecutionLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     job: Mapped["PublishJob"] = relationship(back_populates="logs")
+
+
+class OperationRun(Base):
+    __tablename__ = "operation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
+    asset_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    account_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    variant_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    steps: Mapped[list["OperationStep"]] = relationship(back_populates="run")
+
+
+class OperationStep(Base):
+    __tablename__ = "operation_steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("operation_runs.id"), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    variant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    model_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    skill_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    messages_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parsed_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    run: Mapped["OperationRun"] = relationship(back_populates="steps")

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260827h" />
+  <link rel="stylesheet" href="/static/style.css?v=20260827n" />
 </head>
 <body>
   <div class="layout">
@@ -151,7 +151,17 @@
 
       <section id="view-accounts" class="view">
         <h2>Accounts</h2>
-        <p class="hint">选择平台并添加账号，然后点击「登录并启用」完成一次平台登录即可发布。</p>
+        <p class="hint">选择平台并添加账号，然后点「登录并启用」打开浏览器；在浏览器里完成登录后，再点页面上的「我已登录，启用账号」。</p>
+        <div id="login-activate-banner" class="login-activate-banner" hidden>
+          <div>
+            <strong id="login-activate-title">浏览器已打开</strong>
+            <p id="login-activate-message" class="hint">请在弹出的浏览器中完成平台登录（含验证码），完成后再点右侧按钮启用账号。浏览器会保持打开直到你确认启用。</p>
+          </div>
+          <div class="actions">
+            <button type="button" id="btn-confirm-login-activate">我已登录，启用账号</button>
+            <button type="button" id="btn-dismiss-login-activate">稍后再说</button>
+          </div>
+        </div>
         <form id="account-form" class="inline-form account-create-form">
           <select name="platform" id="account-platform" required>
             <option value="">Loading platforms…</option>
@@ -296,12 +306,18 @@
       </section>
 
       <section id="view-history" class="view">
-        <h2>推送详情</h2>
-        <form class="inline-form">
-          <input id="history-job-id" type="number" placeholder="Job ID" />
-          <button type="button" id="load-history">加载详情</button>
+        <h2>操作历史</h2>
+        <p class="hint">生成内容包、LLM 重写与推送任务统一时间线。点击条目查看详情。</p>
+        <form class="inline-form history-jump-form">
+          <input id="history-job-id" type="number" placeholder="Job ID 快速跳转" />
+          <button type="button" id="load-history">打开 Job</button>
         </form>
-        <div id="job-detail" class="job-detail"></div>
+        <div class="history-layout">
+          <div id="history-timeline" class="history-timeline"></div>
+          <div id="history-detail" class="history-detail">
+            <div class="job-detail-empty">选择左侧条目查看详情</div>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -313,6 +329,23 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260827h"></script>
+  <div id="account-skill-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-account-modal></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="account-skill-modal-title">
+      <div class="modal-header">
+        <h3 id="account-skill-modal-title">账号 Skill</h3>
+        <button type="button" class="modal-close" data-close-account-modal aria-label="关闭">×</button>
+      </div>
+      <div id="account-skill-modal-body" class="modal-body">
+        <div class="hint">加载中…</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="account-skill-modal-edit">去 Accounts 编辑</button>
+        <button type="button" data-close-account-modal>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=20260827n"></script>
 </body>
 </html>

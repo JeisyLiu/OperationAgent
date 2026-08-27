@@ -326,7 +326,7 @@ async def login_and_activate(account_id: int, db: Session = Depends(get_db)) -> 
 
         db,
 
-        message="浏览器已打开。请完成登录（含验证码）后，在应用中点击确认以启用账号。",
+        message="浏览器已打开并会保持。请在浏览器中完成登录（含验证码），然后回到本页点击「我已登录，启用账号」。",
 
     )
 

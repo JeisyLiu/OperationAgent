@@ -220,6 +220,15 @@ def get_variant(variant_id: int, db: Session = Depends(get_db)) -> VariantRespon
     return _variant_response(variant)
 
 
+@router.post("/variants/{variant_id}/rewrite", response_model=VariantResponse)
+def rewrite_variant(variant_id: int, db: Session = Depends(get_db)) -> VariantResponse:
+    try:
+        variant = content_generate_service.rewrite_variant(db, variant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _variant_response(variant)
+
+
 @router.patch("/variants/{variant_id}", response_model=VariantResponse)
 def patch_variant(
     variant_id: int,

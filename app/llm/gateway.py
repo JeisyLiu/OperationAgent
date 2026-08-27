@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.db.session import SessionLocal
 from app.llm import pool
-from app.llm.types import BatchItem, BatchResult, ChatResult, TokenUsage
+from app.llm.types import BatchItem, BatchResult, ChatResult
 from app.services.llm_model_service import LlmModelConfig, llm_model_service
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,10 @@ class LlmGateway:
             raise ValueError(f"Model '{config.alias}' has no API key")
         adapter = pool.get_adapter(config.provider)
         with pool.acquire(config):
-            return adapter.chat(messages, config, max_tokens=max_tokens)
+            result = adapter.chat(messages, config, max_tokens=max_tokens)
+        result.model_id = config.id
+        result.model_alias = config.alias
+        return result
 
     def chat_with_usage(
         self,
@@ -119,8 +122,15 @@ class LlmGateway:
 
         def _run(item: BatchItem) -> BatchResult:
             try:
-                text = self.chat(item.messages, max_tokens=max_tokens, failover=True)
-                return BatchResult(key=item.key, ok=True, text=text)
+                chat_result = self.chat_with_usage(item.messages, max_tokens=max_tokens, failover=True)
+                return BatchResult(
+                    key=item.key,
+                    ok=True,
+                    text=chat_result.text,
+                    usage=chat_result.usage,
+                    model_id=chat_result.model_id,
+                    model_alias=chat_result.model_alias,
+                )
             except Exception as exc:
                 return BatchResult(key=item.key, ok=False, error=str(exc))
 

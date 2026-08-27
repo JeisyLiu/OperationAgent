@@ -381,14 +381,54 @@ function renderReadinessChecks(checks) {
     .join("")}</div>`;
 }
 
+let pendingLoginAccountId = null;
+
+function showLoginActivateBanner(accountId, message) {
+  pendingLoginAccountId = accountId;
+  const account = cachedAccounts.find((a) => a.id === accountId);
+  const banner = document.getElementById("login-activate-banner");
+  const title = document.getElementById("login-activate-title");
+  const msg = document.getElementById("login-activate-message");
+  if (!banner) return;
+  if (title) {
+    title.textContent = account
+      ? `浏览器已打开：#${account.id} ${account.account_name}`
+      : `浏览器已打开：账号 #${accountId}`;
+  }
+  if (msg) {
+    msg.textContent =
+      message ||
+      "请在弹出的浏览器中完成平台登录（含验证码）。登录完成后再点「我已登录，启用账号」；浏览器会保持打开，不会自动关闭。";
+  }
+  banner.hidden = false;
+  refreshAccounts().catch(() => {});
+}
+
+function hideLoginActivateBanner() {
+  pendingLoginAccountId = null;
+  const banner = document.getElementById("login-activate-banner");
+  if (banner) banner.hidden = true;
+}
+
 async function loginAndActivate(accountId) {
   try {
     const opened = await api(`/api/accounts/${accountId}/login-and-activate`, { method: "POST" });
-    const ok = confirm(
-      (opened.message || "浏览器已打开。") + "\n\n完成登录后点「确定」启用账号；未完成请点「取消」。"
-    );
-    if (!ok) return;
+    showLoginActivateBanner(accountId, opened.message);
+  } catch (err) {
+    hideLoginActivateBanner();
+    alert(err.message);
+  }
+}
+
+async function confirmLoginActivate() {
+  if (!pendingLoginAccountId) {
+    alert("没有待启用的登录会话，请先点「登录并启用」。");
+    return;
+  }
+  const accountId = pendingLoginAccountId;
+  try {
     await api(`/api/accounts/${accountId}/mark-active`, { method: "POST" });
+    hideLoginActivateBanner();
     await refreshAccounts();
     await refreshReadiness();
     alert("账号已启用，可以发布内容。");
@@ -1002,7 +1042,12 @@ async function refreshAccounts() {
         <div>${a.status}</div>
         <div class="actions">
           <button type="button" data-skill="${a.id}">Edit skill</button>
-          <button type="button" data-login="${a.id}">登录并启用</button>
+          ${
+            pendingLoginAccountId === a.id
+              ? `<button type="button" data-confirm-login="${a.id}">我已登录，启用账号</button>
+                 <button type="button" data-login="${a.id}">重新打开浏览器</button>`
+              : `<button type="button" data-login="${a.id}">登录并启用</button>`
+          }
           <button type="button" class="danger" data-delete="${a.id}">Delete</button>
         </div>
       </div>`
@@ -1020,6 +1065,9 @@ async function refreshAccounts() {
   });
   document.querySelectorAll("[data-login]").forEach((btn) => {
     btn.onclick = () => loginAndActivate(Number(btn.dataset.login));
+  });
+  document.querySelectorAll("[data-confirm-login]").forEach((btn) => {
+    btn.onclick = () => confirmLoginActivate();
   });
   document.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.onclick = () => {
@@ -1094,34 +1142,41 @@ function renderReviewPackages() {
         const dedicated = hasDedicatedChannel(v.platform);
         const meta = platformMeta(v.platform);
         const choices = sectionChoices(v.platform);
+        const sectionLabelText = escapeHtml(sectionLabel(v.platform));
+        const currentSection = escapeHtml(v.section || "");
+        const listId = `section-choices-${v.id}`;
         const sectionField = choices.length
-          ? `<label>${escapeHtml(sectionLabel(v.platform))}
-            <select data-field="section" data-variant-id="${v.id}">
-              <option value="">—</option>
-              ${choices
-                .map(
-                  (c) =>
-                    `<option value="${escapeHtml(c)}" ${v.section === c ? "selected" : ""}>${escapeHtml(c)}</option>`
-                )
-                .join("")}
-            </select>
+          ? `<label>${sectionLabelText}
+            <input type="text" list="${listId}" data-field="section" data-variant-id="${v.id}" value="${currentSection}" placeholder="选择或自填" autocomplete="off" />
+            <datalist id="${listId}">
+              ${choices.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("")}
+            </datalist>
+            <span class="hint">可从建议中选，也可自填未列出的分区</span>
           </label>`
           : "";
         const accountTitle = escapeHtml(v.account_name || `Account #${v.account_id}`);
         const platformName = escapeHtml(meta.display_name || v.platform);
         const statusBadge = escapeHtml(v.status || "DRAFT");
+        const accountLink = v.account_id
+          ? `<a href="#" class="account-link" data-open-account-skill="${v.account_id}">${accountTitle} · #${v.account_id}</a>`
+          : accountTitle;
         return `
         <article class="package-card ${publishable ? "" : "login-only-card"}" data-variant-id="${v.id}">
           <div class="package-card-header">
-            <label class="check-row">
-              <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" data-platform="${escapeHtml(v.platform)}" ${publishable ? "checked" : ""} ${publishable ? "" : "disabled"} />
+            <div class="check-row">
+              <label class="check-only">
+                <input type="checkbox" name="enqueue_variant" value="${v.id}" data-account-id="${v.account_id}" data-platform="${escapeHtml(v.platform)}" ${publishable ? "checked" : ""} ${publishable ? "" : "disabled"} />
+              </label>
               <span class="card-title">
                 <strong class="package-id">内容包 #${v.id}</strong>
-                <span class="meta">${accountTitle} · #${v.account_id} · ${platformName}</span>
+                <span class="meta">${accountLink} · ${platformName}</span>
               </span>
-            </label>
+            </div>
             <span class="package-badge status-${statusBadge.toLowerCase()}">${statusBadge}</span>
             <span class="package-badge ${dedicated ? "publishable" : "login-only"}">${dedicated ? "dedicated channel" : "generic agent"}</span>
+          </div>
+          <div class="package-card-actions">
+            <button type="button" data-rewrite-variant="${v.id}">LLM 重写</button>
           </div>
           <label>Title
             <input type="text" data-field="title" data-variant-id="${v.id}" value="${escapeHtml(v.title || "")}" />
@@ -1155,6 +1210,36 @@ function renderReviewPackages() {
     el.addEventListener("change", sync);
     el.addEventListener("input", sync);
   });
+
+  container.querySelectorAll("[data-rewrite-variant]").forEach((btn) => {
+    btn.onclick = () => rewritePackageVariant(Number(btn.dataset.rewriteVariant), btn).catch((e) => alert(e.message));
+  });
+  wireAccountSkillLinks(container);
+}
+
+async function rewritePackageVariant(variantId, buttonEl) {
+  if (!confirm(`用 LLM 重写内容包 #${variantId} 的标题与正文？`)) return;
+  const originalLabel = buttonEl?.textContent;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "重写中…";
+  }
+  try {
+    const updated = await api(`/api/content/variants/${variantId}/rewrite`, { method: "POST" });
+    const idx = reviewVariants.findIndex((v) => v.id === variantId);
+    if (idx >= 0) {
+      reviewVariants[idx] = { ...reviewVariants[idx], ...updated };
+    }
+    renderReviewPackages();
+    if (document.getElementById("packages-list")) {
+      loadPackagesTable(packagesPage).catch(() => {});
+    }
+  } finally {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = originalLabel || "LLM 重写";
+    }
+  }
 }
 
 function escapeHtml(value) {
@@ -1184,6 +1269,95 @@ function collectReviewEdits() {
   });
   return Object.values(byId);
 }
+
+function wireAccountSkillLinks(container) {
+  if (!container) return;
+  container.querySelectorAll("[data-open-account-skill]").forEach((link) => {
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openAccountSkillModal(Number(link.dataset.openAccountSkill)).catch((err) => alert(err.message));
+    };
+  });
+}
+
+let pendingAccountSkillId = null;
+
+function closeAccountSkillModal() {
+  const modal = document.getElementById("account-skill-modal");
+  if (modal) modal.hidden = true;
+  pendingAccountSkillId = null;
+}
+
+function renderAccountSkillModal(account) {
+  const title = document.getElementById("account-skill-modal-title");
+  const body = document.getElementById("account-skill-modal-body");
+  if (!body) return;
+  if (title) {
+    title.textContent = `#${account.id} ${account.account_name || "账号"} · Skill`;
+  }
+  const skill = account.skill || {};
+  const tags = Array.isArray(account.role_tags) ? account.role_tags.join(", ") : "";
+  body.innerHTML = `
+    <div class="kv"><span>平台</span><strong>${escapeHtml(platformLabel(account.platform))}</strong></div>
+    <div class="kv"><span>状态</span><strong>${escapeHtml(account.status || "-")}</strong></div>
+    <div class="kv"><span>角色</span><strong>${escapeHtml(account.role_display_name || account.role_id || "未绑定")}</strong></div>
+    <div class="kv"><span>标签</span><strong>${escapeHtml(tags || "—")}</strong></div>
+    <div class="kv"><span>Persona</span><pre>${escapeHtml(account.persona || "—")}</pre></div>
+    <div class="kv"><span>Skill</span><pre>${escapeHtml(JSON.stringify(skill, null, 2))}</pre></div>
+  `;
+}
+
+async function openAccountSkillModal(accountId) {
+  if (!accountId) return;
+  pendingAccountSkillId = accountId;
+  const modal = document.getElementById("account-skill-modal");
+  const body = document.getElementById("account-skill-modal-body");
+  if (!modal || !body) return;
+  body.innerHTML = `<div class="hint">加载中…</div>`;
+  modal.hidden = false;
+
+  let account = cachedAccounts.find((a) => a.id === accountId);
+  if (account) renderAccountSkillModal(account);
+
+  try {
+    account = await api(`/api/accounts/${accountId}`);
+    const idx = cachedAccounts.findIndex((a) => a.id === accountId);
+    if (idx >= 0) cachedAccounts[idx] = account;
+    else cachedAccounts.push(account);
+    if (pendingAccountSkillId === accountId) renderAccountSkillModal(account);
+  } catch (err) {
+    if (pendingAccountSkillId === accountId) {
+      body.innerHTML = `<div class="hint warn">加载失败：${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+document.querySelectorAll("[data-close-account-modal]").forEach((el) => {
+  el.addEventListener("click", () => closeAccountSkillModal());
+});
+
+document.getElementById("account-skill-modal-edit")?.addEventListener("click", async () => {
+  const accountId = pendingAccountSkillId;
+  if (!accountId) return;
+  closeAccountSkillModal();
+  showView("accounts");
+  try {
+    if (!cachedAccounts.some((a) => a.id === accountId)) {
+      await refreshAccounts();
+    }
+    openSkillEditor(accountId);
+    document.getElementById("skill-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const modal = document.getElementById("account-skill-modal");
+  if (modal && !modal.hidden) closeAccountSkillModal();
+});
 
 function openSkillEditor(accountId) {
   const account = cachedAccounts.find((a) => a.id === accountId);
@@ -1330,7 +1504,10 @@ function renderPackagesTable(resp) {
     const rows = items
       .map((v) => {
         const title = escapeHtml((v.title || v.caption || "").slice(0, 48));
-        const account = escapeHtml(v.account_name || (v.account_id ? `#${v.account_id}` : "-"));
+        const accountLabel = escapeHtml(v.account_name || (v.account_id ? `#${v.account_id}` : "-"));
+        const account = v.account_id
+          ? `<a href="#" class="account-link" data-open-account-skill="${v.account_id}">${accountLabel}</a>`
+          : accountLabel;
         const section = escapeHtml(v.section || "-");
         const canDelete = v.status === "DRAFT";
         return `
@@ -1345,6 +1522,7 @@ function renderPackagesTable(resp) {
           <div>${section}</div>
           <div class="actions">
             <button type="button" data-open-package="${v.id}">Open</button>
+            <button type="button" data-rewrite-package="${v.id}">LLM 重写</button>
             <button type="button" data-resume-asset="${v.asset_id}">Resume asset</button>
             ${canDelete ? `<button type="button" data-delete-package="${v.id}" class="danger">Delete</button>` : ""}
           </div>
@@ -1374,6 +1552,9 @@ function renderPackagesTable(resp) {
   container.querySelectorAll("[data-open-package]").forEach((btn) => {
     btn.onclick = () => openPackageVariant(Number(btn.dataset.openPackage)).catch((e) => alert(e.message));
   });
+  container.querySelectorAll("[data-rewrite-package]").forEach((btn) => {
+    btn.onclick = () => rewritePackageVariant(Number(btn.dataset.rewritePackage), btn).catch((e) => alert(e.message));
+  });
   container.querySelectorAll("[data-resume-asset]").forEach((btn) => {
     btn.onclick = () => resumeWizardAsset(Number(btn.dataset.resumeAsset)).catch((e) => alert(e.message));
   });
@@ -1381,6 +1562,7 @@ function renderPackagesTable(resp) {
     btn.onclick = () => deletePackageVariant(Number(btn.dataset.deletePackage)).catch((e) => alert(e.message));
   });
   wireBulkChecks("packages", container);
+  wireAccountSkillLinks(container);
 }
 
 async function loadPackagesTable(page = 1) {
@@ -1528,6 +1710,7 @@ document.getElementById("btn-generate-packages").onclick = async () => {
     }
     await refreshContent();
     await refreshDashboard();
+    await refreshHistoryTimeline();
   } catch (err) {
     if (statusEl) statusEl.textContent = `生成失败：${err.message}`;
     alert(err.message);
@@ -1901,7 +2084,121 @@ function openJobDetail(jobId) {
   showView("history");
   const input = document.getElementById("history-job-id");
   if (input) input.value = String(jobId);
-  loadJobDetail().catch((e) => alert(e.message));
+  loadHistoryJobDetail(jobId).catch((e) => alert(e.message));
+  refreshHistoryTimeline()
+    .then(() => {
+      document.querySelectorAll(".history-item").forEach((el) => {
+        el.classList.toggle(
+          "active",
+          el.dataset.historySource === "job" && Number(el.dataset.historyRef) === Number(jobId)
+        );
+      });
+    })
+    .catch(() => {});
+}
+
+function historyKindLabel(kind) {
+  const labels = { generate: "生成", rewrite: "重写", publish: "推送" };
+  return labels[kind] || kind;
+}
+
+async function refreshHistoryTimeline() {
+  const container = document.getElementById("history-timeline");
+  if (!container) return;
+  const resp = await api("/api/history?limit=100&offset=0");
+  const items = resp.items || [];
+  if (!items.length) {
+    container.innerHTML = `<div class="hint">暂无操作记录。</div>`;
+    return;
+  }
+  container.innerHTML = items
+    .map(
+      (item) => `
+    <button type="button" class="history-item" data-history-source="${escapeHtml(item.source)}" data-history-ref="${item.ref_id}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span class="meta">${historyKindLabel(item.kind)} · ${escapeHtml(item.status)} · ${formatTokens(item.total_tokens)} tokens</span>
+      <span class="meta">${escapeHtml(new Date(item.created_at).toLocaleString())}</span>
+    </button>`
+    )
+    .join("");
+  container.querySelectorAll(".history-item").forEach((btn) => {
+    btn.onclick = () => {
+      container.querySelectorAll(".history-item").forEach((el) => el.classList.remove("active"));
+      btn.classList.add("active");
+      if (btn.dataset.historySource === "job") {
+        loadHistoryJobDetail(Number(btn.dataset.historyRef)).catch((e) => alert(e.message));
+      } else {
+        loadOperationDetail(Number(btn.dataset.historyRef)).catch((e) => alert(e.message));
+      }
+    };
+  });
+}
+
+function renderOperationDetail(detail) {
+  const container = document.getElementById("history-detail");
+  if (!container) return;
+  const input = detail.input_snapshot || {};
+  container.innerHTML = `
+    <div class="job-detail-header">
+      <div class="stat"><strong>#${detail.id}</strong><span>操作 ID</span></div>
+      <div class="stat"><strong>${escapeHtml(historyKindLabel(detail.kind))}</strong><span>类型</span></div>
+      <div class="stat"><strong class="status-${String(detail.status).toLowerCase()}">${escapeHtml(detail.status)}</strong><span>状态</span></div>
+      <div class="stat"><strong>${formatTokens(detail.total_tokens)}</strong><span>总 Token</span></div>
+      <div class="stat"><strong>${detail.asset_id ? `#${detail.asset_id}` : "-"}</strong><span>母帖</span></div>
+    </div>
+    <p class="hint">${escapeHtml(detail.summary || "")}</p>
+    <details open>
+      <summary>初始输入</summary>
+      <pre>${escapeHtml(JSON.stringify(input, null, 2))}</pre>
+    </details>
+    <ol class="step-line">
+      ${(detail.steps || [])
+        .map((step, index) => {
+          const stepStatus = String(step.status || "running").toLowerCase();
+          const title = `账号 #${step.account_id || "?"} · ${escapeHtml(step.platform || "")} · 尝试 ${step.attempt}`;
+          return `
+        <li class="step-line-item status-${stepStatus}">
+          <span class="step-dot" aria-hidden="true"></span>
+          <div class="step-head">
+            <span class="step-title">${title}</span>
+            <span class="step-meta">${formatTokens(step.total_tokens)} tokens · ${escapeHtml(step.model_alias || "-")}</span>
+            <button type="button" class="step-toggle" data-op-step-toggle="${index}">展开</button>
+          </div>
+          <div class="step-body" hidden data-op-step-body="${index}">
+            <div>Skill：<pre>${escapeHtml(JSON.stringify(step.skill || {}, null, 2))}</pre></div>
+            <div>Persona：${escapeHtml(step.persona || "—")}</div>
+            <div>Messages：<pre>${escapeHtml(JSON.stringify(step.messages || [], null, 2))}</pre></div>
+            <div>Response：<pre>${escapeHtml(step.response_text || "")}</pre></div>
+            <div>Parsed：<pre>${escapeHtml(JSON.stringify(step.parsed || {}, null, 2))}</pre></div>
+            <div>Token：prompt ${formatTokens(step.prompt_tokens)} · completion ${formatTokens(step.completion_tokens)} · total ${formatTokens(step.total_tokens)}</div>
+            ${step.error_message ? `<div>错误：${escapeHtml(step.error_message)}</div>` : ""}
+          </div>
+        </li>`;
+        })
+        .join("")}
+    </ol>`;
+
+  container.querySelectorAll("[data-op-step-toggle]").forEach((btn) => {
+    btn.onclick = () => {
+      const body = container.querySelector(`[data-op-step-body="${btn.dataset.opStepToggle}"]`);
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.textContent = open ? "收起" : "展开";
+    };
+  });
+}
+
+async function loadOperationDetail(runId) {
+  const detail = await api(`/api/operations/${runId}`);
+  renderOperationDetail(detail);
+}
+
+async function loadHistoryJobDetail(jobId) {
+  const detail = await api(`/api/jobs/${jobId}/detail`);
+  const container = document.getElementById("history-detail");
+  if (!container) return;
+  renderJobDetail(detail, container);
 }
 
 function renderHumanCard(detail) {
@@ -1923,8 +2220,8 @@ function renderHumanCard(detail) {
     </article>`;
 }
 
-function renderJobDetail(detail) {
-  const container = document.getElementById("job-detail");
+function renderJobDetail(detail, containerEl = null) {
+  const container = containerEl || document.getElementById("history-detail");
   if (!container) return;
   const { job, steps, totals } = detail;
   const statusClass = String(job.status || "").toLowerCase();
@@ -1995,7 +2292,7 @@ function renderJobDetail(detail) {
   container.querySelectorAll("[data-human-resume]").forEach((btn) => {
     btn.onclick = () =>
       api(`/api/jobs/${btn.dataset.humanResume}/resume`, { method: "POST" })
-        .then(() => loadJobDetail())
+        .then(() => loadHistoryJobDetail(job.id))
         .catch((e) => alert(e.message));
   });
 
@@ -2004,13 +2301,18 @@ function renderJobDetail(detail) {
 
 async function loadJobDetail() {
   const id = document.getElementById("history-job-id")?.value;
-  const container = document.getElementById("job-detail");
   if (!id) {
+    const container = document.getElementById("history-detail");
     if (container) container.innerHTML = `<div class="job-detail-empty">输入 Job ID 查看推送详情。</div>`;
     return;
   }
-  const detail = await api(`/api/jobs/${id}/detail`);
-  renderJobDetail(detail);
+  await loadHistoryJobDetail(Number(id));
+  document.querySelectorAll(".history-item").forEach((el) => {
+    el.classList.toggle(
+      "active",
+      el.dataset.historySource === "job" && Number(el.dataset.historyRef) === Number(id)
+    );
+  });
 }
 
 document.getElementById("load-history").onclick = () => loadJobDetail().catch((e) => alert(e.message));
@@ -2132,6 +2434,14 @@ async function refreshLlmModels() {
   });
   wireBulkChecks("llm", container);
 }
+
+document.getElementById("btn-confirm-login-activate")?.addEventListener("click", () => {
+  confirmLoginActivate().catch((e) => alert(e.message));
+});
+document.getElementById("btn-dismiss-login-activate")?.addEventListener("click", () => {
+  hideLoginActivateBanner();
+  refreshAccounts().catch(() => {});
+});
 
 document.getElementById("btn-llm-add").onclick = () => openLlmEditor();
 document.getElementById("btn-llm-cancel").onclick = () => closeLlmEditor();
@@ -2361,6 +2671,7 @@ async function refreshAllPanels() {
     refreshQueue(),
     refreshWorkerBar(),
     refreshLlmModels(),
+    refreshHistoryTimeline(),
   ]);
 }
 
@@ -2421,6 +2732,7 @@ async function init() {
       refreshWorkerBar(),
       refreshLlmModels(),
       refreshSkillRolesAdmin(),
+      refreshHistoryTimeline(),
     ]);
     await restoreWizardSession();
     connectEventStream();

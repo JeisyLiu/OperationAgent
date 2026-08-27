@@ -65,6 +65,51 @@ CREATE TABLE IF NOT EXISTS llm_models (
 )
 """
 
+OPERATION_RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS operation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'running',
+    asset_id INTEGER,
+    account_ids_json TEXT,
+    variant_ids_json TEXT,
+    input_json TEXT,
+    summary TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    error_message TEXT,
+    created_at DATETIME,
+    completed_at DATETIME
+)
+"""
+
+OPERATION_STEPS_DDL = """
+CREATE TABLE IF NOT EXISTS operation_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    account_id INTEGER,
+    platform VARCHAR(32),
+    variant_id INTEGER,
+    status VARCHAR(32) NOT NULL DEFAULT 'running',
+    attempt INTEGER NOT NULL DEFAULT 1,
+    model_id INTEGER,
+    model_alias VARCHAR(128),
+    skill_json TEXT,
+    persona TEXT,
+    messages_json TEXT,
+    response_text TEXT,
+    parsed_json TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    duration_ms INTEGER,
+    error_message TEXT,
+    created_at DATETIME,
+    FOREIGN KEY (run_id) REFERENCES operation_runs(id)
+)
+"""
+
 
 def run_migrations() -> None:
     """Lightweight SQLite migrations for MVP (add missing columns / tables)."""
@@ -87,7 +132,9 @@ def run_migrations() -> None:
         conn.execute(text(SKILL_ROLES_DDL))
         conn.execute(text(SKILL_ROLE_OVERLAYS_DDL))
         conn.execute(text(CUSTOM_PLATFORMS_DDL))
-        logger.info("Migration: ensured skill_roles and custom_platforms tables exist")
+        conn.execute(text(OPERATION_RUNS_DDL))
+        conn.execute(text(OPERATION_STEPS_DDL))
+        logger.info("Migration: ensured skill_roles, custom_platforms, and operation audit tables exist")
 
         if "accounts" in table_names:
             account_columns = {col["name"] for col in inspector.get_columns("accounts")}

@@ -12,7 +12,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(os.environ['APP_DATA_DIR
 from app.db.models import AiSettings, Base, LlmModel
 from app.db.session import SessionLocal, engine
 from app.llm.gateway import LlmGateway
-from app.llm.types import BatchItem, BatchResult, ChatResult
+from app.llm.types import BatchItem, BatchResult, ChatResult, TokenUsage
 from app.main import app
 from app.services.crypto import encrypt_text
 from app.services.llm_model_service import llm_model_service
@@ -130,16 +130,21 @@ def test_gateway_failover(mock_get_adapter):
     backup_adapter.chat.assert_called_once()
 
 
-@patch("app.llm.gateway.LlmGateway.chat")
-def test_chat_batch_partial_failure(mock_chat):
+@patch("app.llm.gateway.LlmGateway.chat_with_usage")
+def test_chat_batch_partial_failure(mock_chat_with_usage):
     gateway = LlmGateway()
 
     def _side_effect(messages, **kwargs):
         if messages[0]["content"] == "bad":
             raise RuntimeError("boom")
-        return "ok"
+        return ChatResult(
+            text="ok",
+            usage=TokenUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+            model_id=1,
+            model_alias="Test",
+        )
 
-    mock_chat.side_effect = _side_effect
+    mock_chat_with_usage.side_effect = _side_effect
     results = gateway.chat_batch(
         [
             BatchItem(key=1, messages=[{"role": "user", "content": "good"}]),
@@ -150,6 +155,7 @@ def test_chat_batch_partial_failure(mock_chat):
     )
     by_key = {r.key: r for r in results}
     assert by_key[1].ok is True
+    assert by_key[1].usage.total_tokens == 2
     assert by_key[2].ok is False
 
 

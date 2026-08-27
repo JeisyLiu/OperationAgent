@@ -28,6 +28,8 @@ class TokenUsage:
 class ChatResult:
     text: str
     usage: TokenUsage | None = None
+    model_id: int | None = None
+    model_alias: str | None = None
 
 
 @dataclass
@@ -36,5 +38,6 @@ class BatchResult:
     ok: bool
     text: str | None = None
     error: str | None = None
+    usage: TokenUsage | None = None
     model_id: int | None = None
     model_alias: str | None = None

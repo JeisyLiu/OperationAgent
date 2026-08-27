@@ -79,7 +79,20 @@ def test_bilibili_has_section_choices():
     platform = get_platform("bilibili")
     assert platform is not None
     choices = platform.publish_options.get("section", {}).get("choices", [])
-    assert len(choices) >= 3
+    assert len(choices) >= 10
+    for name in ("知识", "游戏", "鬼畜", "美食", "动物圈"):
+        assert name in choices
+    assert platform.publish_options.get("section", {}).get("allow_custom") is True
+
+
+def test_zhihu_has_section_choices():
+    platform = get_platform("zhihu")
+    assert platform is not None
+    choices = platform.publish_options.get("section", {}).get("choices", [])
+    assert len(choices) >= 10
+    for name in ("科技", "职场", "心理", "法律"):
+        assert name in choices
+    assert platform.publish_options.get("section", {}).get("allow_custom") is True
 
 
 def test_tiktok_has_no_section_choices():
