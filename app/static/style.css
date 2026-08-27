@@ -436,7 +436,7 @@ pre {
   align-items: center;
 }
 .packages-table .row {
-  grid-template-columns: 4rem 4.5rem 6rem 6.5rem 1fr 5rem 5rem 11rem;
+  grid-template-columns: 2.5rem 4rem 4.5rem 6rem 6.5rem 1fr 5rem 5rem 11rem;
   gap: .5rem;
 }
 .packages-table .actions {
@@ -520,13 +520,208 @@ pre {
 }
 .pool-card {
   display: grid;
-  grid-template-columns: 1.4fr 1.2fr 1fr auto;
+  grid-template-columns: 2.5rem 1.4fr 1.2fr 1fr auto;
   gap: .75rem;
   align-items: center;
   padding: .85rem 1rem;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+.settings-subhead {
+  margin-top: 2rem;
+}
+.platforms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+.platform-tile {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  min-height: 96px;
+  padding: .85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.platform-tile .meta {
+  font-size: .8rem;
+}
+.platform-tile .actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.platform-tile-add {
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  cursor: pointer;
+  color: var(--muted, #888);
+  background: transparent;
+  font: inherit;
+}
+.platform-tile-add:hover {
+  border-color: var(--accent, #4a7);
+  color: var(--text, #eee);
+}
+.skill-roles-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+.skill-roles-admin {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  padding-right: .25rem;
+}
+.skill-role-card {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .7rem .85rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.skill-role-card:hover {
+  border-color: var(--accent, #4a7);
+}
+.skill-role-card.active {
+  border-color: var(--accent, #4a7);
+  box-shadow: inset 3px 0 0 var(--accent, #4a7);
+}
+.skill-role-card .title {
+  font-weight: 600;
+}
+.skill-role-editor-panel {
+  min-height: 280px;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+.skill-role-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  color: var(--muted, #888);
+  font-size: .95rem;
+}
+@media (max-width: 900px) {
+  .skill-roles-layout {
+    grid-template-columns: 1fr;
+  }
+  .skill-roles-admin {
+    max-height: 240px;
+  }
+}
+.account-create-form {
+  flex-wrap: wrap;
+}
+.account-role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  margin: .5rem 0 .75rem;
+}
+.account-role-tags label {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-width: auto !important;
+  font-size: .88rem;
+}
+.account-skill-preview {
+  margin-bottom: .75rem;
+}
+#skill-role-merged-preview {
+  margin: .75rem 0;
+}
+#skill-role-merged-preview-body {
+  margin-top: .5rem;
+  max-height: 280px;
+  font-size: .8rem;
+}
+#accounts-list .row {
+  grid-template-columns: 2.5rem minmax(120px, 1fr) minmax(100px, .8fr) minmax(100px, .9fr) 90px minmax(220px, 1.4fr);
+}
+.accounts-head,
+.queue-head {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: .85rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .35rem;
+  background: transparent;
+  border-radius: 0;
+}
+#queue-list .row {
+  grid-template-columns: 2.5rem 5rem 5rem 6rem 7rem 1fr minmax(200px, 1.6fr);
+}
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin: .5rem 0 .75rem;
+  padding: .55rem .75rem;
+  background: rgba(90, 160, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bulk-count {
+  font-size: .9rem;
+  color: var(--muted);
+}
+.bulk-actions {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+/* Bulk row checkboxes: must beat global `label { min-width: 220px }` or the
+   first grid column overflows and the box looks like it sits after the text. */
+.row-check-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+label.row-check {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+  min-width: 0 !important;
+  width: auto;
+  max-width: 100%;
+  cursor: pointer;
+  user-select: none;
+}
+label.row-check input {
+  width: 1rem;
+  height: 1rem;
+  min-width: 1rem;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 .pool-card.disabled {
   opacity: .55;

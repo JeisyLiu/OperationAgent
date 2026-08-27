@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "authoritative HR voice",
+    "extra_prompt": "Lead with role impact; structured bullets for requirements."
+  },
+  "persona_suffix": "，LinkedIn 招聘主阵地"
+}

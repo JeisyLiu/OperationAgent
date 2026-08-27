@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "clear FAQ broadcast",
+    "extra_prompt": "Channel post: one message, short CTA, optional link."
+  },
+  "persona_suffix": "，Telegram 公告支持"
+}

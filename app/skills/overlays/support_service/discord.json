@@ -1,0 +1,13 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "community-friendly, low-hype",
+    "extra_prompt": "Write for a channel: bullets ok, no hard-sell spam.",
+    "structure": [
+      "acknowledge",
+      "steps",
+      "ticket"
+    ]
+  },
+  "persona_suffix": "，Discord 支持频道"
+}

@@ -16,13 +16,14 @@ from app.llm.types import BatchItem, BatchResult, ChatResult
 from app.main import app
 from app.services.crypto import encrypt_text
 from app.services.llm_model_service import llm_model_service
+from tests.conftest import safe_drop_all
 
 
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    safe_drop_all(engine)
 
 
 @pytest.fixture

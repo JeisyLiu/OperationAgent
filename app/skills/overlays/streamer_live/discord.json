@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "community-friendly, low-hype",
+    "extra_prompt": "Write for a channel: bullets ok, no hard-sell spam.",
+    "cta": "Stream starting soon — join voice if you're around"
+  },
+  "persona_suffix": "，Discord 直播预告"
+}

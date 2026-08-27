@@ -40,5 +40,6 @@ def acquire(config: LlmModelConfig):
 
 def invalidate_client(model_id: int) -> None:
     _openai_adapter.invalidate(model_id)
+    _qwen_adapter.invalidate(model_id)
     with _lock:
         _semaphores.pop(model_id, None)

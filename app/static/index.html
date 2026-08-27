@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OperationAgent</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260827b" />
+  <link rel="stylesheet" href="/static/style.css?v=20260827h" />
 </head>
 <body>
   <div class="layout">
@@ -51,7 +51,7 @@
 
       <section id="view-settings" class="view">
         <h2>LLM 连接池</h2>
-        <p class="hint">可添加多套模型配置。按 Priority 从小到大调用；失败自动切换下一套启用中的配置。Max concurrency 为该配置并发上限。</p>
+        <p class="hint">可添加多套模型配置。Provider 选 qwen 时默认走 DashScope OpenAI 兼容接口（支持 qwen3.5 / qwen3.7 / 百炼第三方模型）。按 Priority 从小到大调用；失败自动切换下一套启用中的配置。</p>
         <div class="pool-toolbar">
           <button type="button" id="btn-llm-add">+ 添加配置</button>
         </div>
@@ -64,11 +64,11 @@
             <label>Provider
               <select name="provider" id="llm-provider" required>
                 <option value="openai">openai</option>
-                <option value="qwen">qwen (DashScope 原生)</option>
+                <option value="qwen">qwen (DashScope 兼容模式)</option>
               </select>
             </label>
-            <label>Model <input name="model" id="llm-model" placeholder="gpt-4o-mini / qwen-plus" /></label>
-            <label>Base URL <input name="base_url" id="llm-base-url" placeholder="仅 OpenAI 需要；Qwen 可留空" /></label>
+            <label>Model <input name="model" id="llm-model" placeholder="qwen-flash / qwen-plus / qwen3.5-plus" /></label>
+            <label>Base URL <input name="base_url" id="llm-base-url" placeholder="Qwen 可留空（默认 compatible-mode）；OpenAI 填官方地址" /></label>
             <label>API Key <input name="api_key" id="llm-api-key" type="password" autocomplete="off" placeholder="新建必填；编辑留空则不改" /></label>
             <div class="pool-form-grid">
               <label>Priority <input name="priority" id="llm-priority" type="number" value="0" /></label>
@@ -83,23 +83,102 @@
           </form>
         </div>
         <pre id="settings-result" class="generate-result"></pre>
+
+        <h3 class="settings-subhead">平台</h3>
+        <p class="hint">内置平台只读；可添加自定义平台供账号选择。仅自定义平台可编辑或删除（有账号引用时不可删）。</p>
+        <div id="platforms-list" class="platforms-grid"></div>
+        <div id="platform-editor" class="pool-editor" hidden>
+          <h3 id="platform-editor-title">添加自定义平台</h3>
+          <form id="platform-form" class="publish-form">
+            <label>ID <input name="id" id="platform-id" required pattern="[a-z][a-z0-9_]{1,31}" placeholder="my_forum" /></label>
+            <label>显示名 <input name="display_name" id="platform-display-name" required /></label>
+            <label>Region <input name="region" id="platform-region" value="global" /></label>
+            <label>Home URL <input name="home_url" id="platform-home-url" required placeholder="https://example.com/" /></label>
+            <label>Login URL <input name="login_url" id="platform-login-url" placeholder="默认同 Home" /></label>
+            <label>Upload URL <input name="upload_url" id="platform-upload-url" placeholder="默认同 Home" /></label>
+            <label>Media types（逗号分隔）<input name="media_types" id="platform-media-types" value="text,image" /></label>
+            <label>Default persona <textarea id="platform-persona" rows="2"></textarea></label>
+            <label>Default skill JSON
+              <textarea id="platform-skill-json" rows="6" placeholder='{"tone":"...","language":"en"}'></textarea>
+            </label>
+            <label class="inline-check"><input type="checkbox" name="enabled" id="platform-enabled" checked /> 启用</label>
+            <div class="actions">
+              <button type="submit" id="platform-save-btn">保存</button>
+              <button type="button" id="btn-platform-cancel">取消</button>
+            </div>
+          </form>
+        </div>
+
+        <h3 class="settings-subhead">角色 Skill 模板</h3>
+        <p class="hint">左侧选择角色模板；右侧编辑基底 Skill 与平台 Overlay。合并效果见预览（与账号页一致）。</p>
+        <div class="skill-roles-layout">
+          <div id="skill-roles-admin" class="skill-roles-admin"></div>
+          <div id="skill-role-editor" class="pool-editor skill-role-editor-panel">
+            <div id="skill-role-editor-empty" class="skill-role-editor-empty">从左侧选择一个角色模板进行编辑</div>
+            <div id="skill-role-editor-body" hidden>
+              <h3 id="skill-role-editor-title">编辑角色模板</h3>
+              <form id="skill-role-admin-form" class="publish-form">
+                <input type="hidden" id="skill-role-edit-id" value="" />
+                <label>显示名 <input id="skill-role-display-name" required /></label>
+                <label>描述 <textarea id="skill-role-description" rows="2"></textarea></label>
+                <label>默认 Persona <textarea id="skill-role-persona" rows="2"></textarea></label>
+                <label>角色基底 Skill JSON（全平台共用）
+                  <textarea id="skill-role-skill-json" rows="10"></textarea>
+                </label>
+                <label>Overlay 平台
+                  <select id="skill-role-overlay-platform">
+                    <option value="_default">_default</option>
+                  </select>
+                </label>
+                <p id="skill-overlay-source" class="hint"></p>
+                <label>平台 Overlay JSON（仅该平台差异）
+                  <textarea id="skill-role-overlay-json" rows="8" placeholder='{"skill":{...},"persona_suffix":"..."}'></textarea>
+                </label>
+                <details id="skill-role-merged-preview" open>
+                  <summary>合并预览（角色 + 平台 Overlay + 平台默认）</summary>
+                  <pre id="skill-role-merged-preview-body"></pre>
+                </details>
+                <div class="actions">
+                  <button type="submit">保存角色基底</button>
+                  <button type="button" id="btn-save-skill-overlay">保存当前平台 Overlay</button>
+                  <button type="button" id="btn-skill-role-cancel">关闭</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="view-accounts" class="view">
         <h2>Accounts</h2>
         <p class="hint">选择平台并添加账号，然后点击「登录并启用」完成一次平台登录即可发布。</p>
-        <form id="account-form" class="inline-form">
+        <form id="account-form" class="inline-form account-create-form">
           <select name="platform" id="account-platform" required>
             <option value="">Loading platforms…</option>
+          </select>
+          <select name="role_id" id="account-role">
+            <option value="">默认（仅平台风格）</option>
           </select>
           <input name="account_name" placeholder="Account name" required />
           <button type="submit">Add account</button>
         </form>
+        <div id="account-role-tags" class="account-role-tags"></div>
+        <details id="account-skill-preview" class="account-skill-preview" hidden>
+          <summary>预览将应用的 Skill</summary>
+          <pre id="account-skill-preview-body"></pre>
+        </details>
         <div id="accounts-list" class="table"></div>
         <div id="skill-editor" class="skill-editor" hidden>
           <h3>Edit Account Skill</h3>
+          <p id="skill-template-hint" class="hint"></p>
           <form id="skill-form" class="skill-form">
             <input type="hidden" name="account_id" id="skill-account-id" />
+            <label>角色模板
+              <select id="skill-role-select">
+                <option value="">默认（仅平台风格）</option>
+              </select>
+            </label>
+            <div id="skill-role-tags-edit" class="account-role-tags"></div>
             <label>Persona <input name="persona" id="skill-persona" /></label>
             <label>Tone <input name="tone" id="skill-tone" /></label>
             <label>Audience <input name="audience" id="skill-audience" /></label>
@@ -107,7 +186,10 @@
             <label>CTA <input name="cta" id="skill-cta" /></label>
             <label>Taboos (comma-separated) <input name="taboos" id="skill-taboos" /></label>
             <label>Extra prompt <textarea name="extra_prompt" id="skill-extra" rows="3"></textarea></label>
-            <button type="submit">Save skill</button>
+            <div class="actions">
+              <button type="submit">Save skill</button>
+              <button type="button" id="btn-reset-skill-template">重置为角色×平台模板</button>
+            </div>
           </form>
         </div>
       </section>
@@ -231,6 +313,6 @@
     <button id="btn-stop">Stop</button>
   </footer>
 
-  <script src="/static/app.js?v=20260827e"></script>
+  <script src="/static/app.js?v=20260827h"></script>
 </body>
 </html>

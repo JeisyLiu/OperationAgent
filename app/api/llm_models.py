@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.llm import llm
 from app.llm import pool as llm_pool
+from app.schemas.bulk import BulkActionRequest, BulkActionResponse
 from app.schemas.llm import (
     LlmModelCreate,
     LlmModelResponse,
     LlmModelTestResponse,
     LlmModelUpdate,
 )
+from app.services.bulk_actions import bulk_actions_service
 from app.services.llm_model_service import llm_model_service
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
@@ -54,6 +56,20 @@ def create_llm_model(payload: LlmModelCreate, db: Session = Depends(get_db)) -> 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _to_response(row)
+
+
+@router.post("/models/bulk", response_model=BulkActionResponse)
+def bulk_llm_models(payload: BulkActionRequest, db: Session = Depends(get_db)) -> BulkActionResponse:
+    try:
+        result = bulk_actions_service.bulk_llm_models(
+            db,
+            ids=payload.ids,
+            action=payload.action,
+            on_deleted=llm_pool.invalidate_client,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
 
 
 @router.patch("/models/{model_id}", response_model=LlmModelResponse)

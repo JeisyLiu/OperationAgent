@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import utcnow
 from app.db.session import get_db
+from app.schemas.bulk import BulkActionRequest, BulkActionResponse
 from app.schemas.jobs import (
     BulkJobCreate,
     BulkJobResponse,
@@ -16,6 +17,7 @@ from app.schemas.jobs import (
     RepublishRequest,
     RepublishResponse,
 )
+from app.services.bulk_actions import bulk_actions_service
 from app.services.job_service import job_service
 from app.services.event_bus import emit_job_updated, emit_readiness_changed
 
@@ -66,6 +68,19 @@ def create_jobs_bulk(payload: BulkJobCreate, db: Session = Depends(get_db)) -> B
         created=created,
         failed=[BulkJobResultItem(**f) for f in failed],
     )
+
+
+@router.post("/bulk-actions", response_model=BulkActionResponse)
+def bulk_job_actions(payload: BulkActionRequest, db: Session = Depends(get_db)) -> BulkActionResponse:
+    try:
+        result = bulk_actions_service.bulk_jobs(db, ids=payload.ids, action=payload.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for job_id in result.succeeded:
+        job = job_service.get(db, job_id)
+        if job is not None:
+            _emit_job(job)
+    return result
 
 
 @router.get("/{job_id}", response_model=JobResponse)

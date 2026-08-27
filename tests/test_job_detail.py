@@ -19,6 +19,7 @@ from app.agent.tool_loop import run_tool_loop
 from app.constants import FailureCode, JobStatus, StepStatus
 from app.db.migrate import run_migrations
 from app.db.models import Base, ExecutionLog
+from tests.conftest import safe_drop_all
 from app.db.session import SessionLocal, engine
 from app.main import app
 from app.services.account_service import account_service
@@ -31,7 +32,7 @@ def setup_db():
     Base.metadata.create_all(bind=engine)
     run_migrations()
     yield
-    Base.metadata.drop_all(bind=engine)
+    safe_drop_all(engine)
 
 
 @pytest.fixture

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.skills import router as skills_router
 from app.api.accounts import router as accounts_router
 from app.api.content import router as content_router
 from app.api.events import router as events_router
@@ -70,6 +71,7 @@ app.include_router(health_router)
 app.include_router(events_router)
 app.include_router(settings_router)
 app.include_router(llm_models_router)
+app.include_router(skills_router)
 app.include_router(accounts_router)
 app.include_router(content_router)
 app.include_router(jobs_router)

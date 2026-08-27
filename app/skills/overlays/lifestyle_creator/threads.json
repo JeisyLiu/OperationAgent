@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "casual, conversational",
+    "extra_prompt": "Short post under 500 chars; invite replies."
+  },
+  "persona_suffix": ", tuned for Threads"
+}

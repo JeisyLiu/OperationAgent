@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "casual, hook-first",
+    "hashtag_style": "3-5 tags mixing reach and niche",
+    "extra_prompt": "Strong hook in line one; mobile-scannable caption."
+  },
+  "persona_suffix": ", optimized for TikTok"
+}

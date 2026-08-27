@@ -14,6 +14,7 @@ os.environ.setdefault("AGENT_ADAPTER", "mock")
 
 from app.constants import JobStatus
 from app.db.models import Base
+from tests.conftest import safe_drop_all
 from app.db.session import SessionLocal, engine
 from app.main import app
 from app.services.account_service import account_service
@@ -26,7 +27,7 @@ from app.services.llm_model_service import llm_model_service
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    safe_drop_all(engine)
 
 
 @pytest.fixture

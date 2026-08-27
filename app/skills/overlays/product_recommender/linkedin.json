@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "professional recommendation, evidence-based",
+    "extra_prompt": "Longer caption ok: hook, 2-3 paragraphs, clear takeaway."
+  },
+  "persona_suffix": "，职场可信推荐"
+}

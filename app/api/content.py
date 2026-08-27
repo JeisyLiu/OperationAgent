@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ContentVariant
 from app.db.session import get_db
+from app.schemas.bulk import BulkActionRequest, BulkActionResponse
 from app.schemas.content import (
     AssetCreate,
     AssetResponse,
@@ -16,6 +17,8 @@ from app.schemas.content import (
     VariantResponse,
     VariantUpdate,
 )
+from app.services.bulk_actions import bulk_actions_service
+from app.services.event_bus import emit_job_updated, emit_readiness_changed
 from app.services.content_generate_service import content_generate_service
 from app.services.content_service import content_service
 
@@ -183,6 +186,30 @@ def create_variant(payload: VariantCreate, db: Session = Depends(get_db)) -> Var
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _variant_response(variant)
+
+
+@router.post("/variants/bulk", response_model=BulkActionResponse)
+def bulk_variants(payload: BulkActionRequest, db: Session = Depends(get_db)) -> BulkActionResponse:
+    enqueued_jobs: list = []
+
+    def on_enqueued(job) -> None:
+        enqueued_jobs.append(job)
+
+    try:
+        result = bulk_actions_service.bulk_variants(
+            db,
+            ids=payload.ids,
+            action=payload.action,
+            on_enqueued=on_enqueued,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if payload.action == "enqueue":
+        for job in enqueued_jobs:
+            emit_job_updated(job.id, job.status)
+        if enqueued_jobs:
+            emit_readiness_changed()
+    return result
 
 
 @router.get("/variants/{variant_id}", response_model=VariantResponse)

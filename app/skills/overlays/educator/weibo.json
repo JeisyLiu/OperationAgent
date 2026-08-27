@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "简洁有力、可带话题感",
+    "hashtag_style": "#话题# 格式，1-3 个",
+    "extra_prompt": "适合转发传播；关键信息前置。"
+  },
+  "persona_suffix": "，熟悉微博传播节奏"
+}

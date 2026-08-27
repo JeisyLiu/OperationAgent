@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "concise broadcast",
+    "extra_prompt": "Channel post: one message, short CTA, optional link."
+  },
+  "persona_suffix": ", tuned for Telegram Channel"
+}

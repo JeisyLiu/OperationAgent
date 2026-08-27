@@ -50,8 +50,56 @@ class Account(Base):
     persona: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str | None] = mapped_column(String(16), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    role_tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="PENDING_LOGIN")
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SkillRole(Base):
+    __tablename__ = "skill_roles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skill_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class SkillRoleOverlay(Base):
+    __tablename__ = "skill_role_overlays"
+
+    role_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("skill_roles.id"), primary_key=True
+    )
+    platform: Mapped[str] = mapped_column(String(32), primary_key=True)
+    skill_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    persona_suffix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class CustomPlatform(Base):
+    __tablename__ = "custom_platforms"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    region: Mapped[str] = mapped_column(String(32), default="global")
+    home_url: Mapped[str] = mapped_column(Text, nullable=False)
+    login_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upload_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Integer, default=1)
+    media_types_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    variant_schema_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_skill_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publish_options_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preferred_adapter: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

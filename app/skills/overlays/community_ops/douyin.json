@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "口语化、节奏快",
+    "extra_prompt": "前 3 秒钩子；字幕友好短句。"
+  },
+  "persona_suffix": "，擅长抖音短视频表达"
+}

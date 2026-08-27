@@ -1,0 +1,40 @@
+{
+  "id": "discord",
+  "display_name": "Discord",
+  "region": "global",
+  "home_url": "https://discord.com/",
+  "login_url": "https://discord.com/login",
+  "upload_url": "https://discord.com/channels/@me",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 256 },
+    "caption": { "required": true, "max_length": 2000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "login"]
+  },
+  "default_persona": "Community-minded Discord member who shares helpful updates in a friendly, low-hype tone",
+  "default_skill": {
+    "tone": "casual, community-first, avoid hard-sell ads",
+    "audience": "server members who value useful discussion over promotion",
+    "language": "en",
+    "taboos": ["spam pings", "mass @everyone", "deceptive promos", "off-topic flooding"],
+    "cta": "Drop your thoughts in thread — happy to answer questions",
+    "topics": ["community updates", "tips", "Q&A", "events"],
+    "hashtag_style": "no hashtags; use channel context instead",
+    "extra_prompt": "Write for a channel audience: short paragraphs, scannable bullets, minimal emoji. Lead with value, not a sales pitch."
+  },
+  "publish_options": {
+    "target": {
+      "label": "Post target",
+      "description": "Post to a text channel or via webhook URL for broadcast-style updates",
+      "choices": [
+        { "id": "channel", "label": "Channel message" },
+        { "id": "webhook", "label": "Webhook broadcast" }
+      ]
+    }
+  }
+}

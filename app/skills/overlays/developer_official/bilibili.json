@@ -1,0 +1,14 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "社区感、玩梗适度、信息密度高",
+    "hashtag_style": "分区相关标签 2-4 个",
+    "extra_prompt": "标题可带悬念；正文兼顾弹幕互动点。",
+    "topics": [
+      "教程",
+      "开源",
+      "技术分享"
+    ]
+  },
+  "persona_suffix": "，熟悉B站社区语境"
+}

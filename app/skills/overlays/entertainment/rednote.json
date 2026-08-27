@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "亲切真实、笔记感",
+    "hashtag_style": "2-4 个场景化话题标签",
+    "extra_prompt": "标题短小吸睛；正文像给朋友安利。"
+  },
+  "persona_suffix": "，熟悉小红书笔记结构"
+}

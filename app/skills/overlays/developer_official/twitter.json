@@ -1,0 +1,14 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "concise, punchy, thread-friendly",
+    "hashtag_style": "0-2 relevant hashtags only",
+    "extra_prompt": "Respect character limits; one idea per post when possible.",
+    "structure": [
+      "what",
+      "why",
+      "code_link"
+    ]
+  },
+  "persona_suffix": ", optimized for X/Twitter"
+}

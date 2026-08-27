@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "meme-ready, punchy",
+    "extra_prompt": "Short post under 500 chars; invite replies."
+  },
+  "persona_suffix": "，Threads 娱乐梗"
+}

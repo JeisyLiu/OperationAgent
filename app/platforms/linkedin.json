@@ -1,0 +1,31 @@
+{
+  "id": "linkedin",
+  "display_name": "LinkedIn",
+  "region": "global",
+  "home_url": "https://www.linkedin.com/",
+  "login_url": "https://www.linkedin.com/login",
+  "upload_url": "https://www.linkedin.com/feed/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 220 },
+    "caption": { "required": true, "max_length": 3000 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["sign in", "log in"]
+  },
+  "default_persona": "Professional LinkedIn voice focused on credibility and workplace relevance",
+  "default_skill": {
+    "tone": "professional, thoughtful, minimal emoji",
+    "audience": "professionals seeking insight, career context, or industry updates",
+    "language": "en",
+    "taboos": ["hype slang", "emoji walls", "unverified claims", "engagement bait"],
+    "cta": "What is your experience? Share in the comments",
+    "topics": ["industry insight", "career", "leadership", "productivity"],
+    "hashtag_style": "3-5 professional hashtags at the end",
+    "extra_prompt": "Longer-form caption allowed: hook line, 2-4 short paragraphs, clear takeaway. Avoid meme tone."
+  },
+  "publish_options": {}
+}

@@ -7,6 +7,47 @@ from app.db.session import SessionLocal, engine
 
 logger = logging.getLogger(__name__)
 
+SKILL_ROLES_DDL = """
+CREATE TABLE IF NOT EXISTS skill_roles (
+    id VARCHAR(64) PRIMARY KEY,
+    display_name VARCHAR(128) NOT NULL,
+    description TEXT,
+    persona TEXT,
+    skill_json TEXT NOT NULL,
+    updated_at DATETIME
+)
+"""
+
+SKILL_ROLE_OVERLAYS_DDL = """
+CREATE TABLE IF NOT EXISTS skill_role_overlays (
+    role_id VARCHAR(64) NOT NULL,
+    platform VARCHAR(32) NOT NULL,
+    skill_json TEXT,
+    persona_suffix TEXT,
+    updated_at DATETIME,
+    PRIMARY KEY (role_id, platform)
+)
+"""
+
+CUSTOM_PLATFORMS_DDL = """
+CREATE TABLE IF NOT EXISTS custom_platforms (
+    id VARCHAR(32) PRIMARY KEY,
+    display_name VARCHAR(128) NOT NULL,
+    region VARCHAR(32) NOT NULL DEFAULT 'global',
+    home_url TEXT NOT NULL,
+    login_url TEXT,
+    upload_url TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    media_types_json TEXT,
+    variant_schema_json TEXT,
+    default_persona TEXT,
+    default_skill_json TEXT,
+    publish_options_json TEXT,
+    preferred_adapter VARCHAR(64),
+    created_at DATETIME
+)
+"""
+
 LLM_MODELS_DDL = """
 CREATE TABLE IF NOT EXISTS llm_models (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +84,20 @@ def run_migrations() -> None:
         conn.execute(text(LLM_MODELS_DDL))
         logger.info("Migration: ensured llm_models table exists")
 
+        conn.execute(text(SKILL_ROLES_DDL))
+        conn.execute(text(SKILL_ROLE_OVERLAYS_DDL))
+        conn.execute(text(CUSTOM_PLATFORMS_DDL))
+        logger.info("Migration: ensured skill_roles and custom_platforms tables exist")
+
+        if "accounts" in table_names:
+            account_columns = {col["name"] for col in inspector.get_columns("accounts")}
+            if "role_id" not in account_columns:
+                conn.execute(text("ALTER TABLE accounts ADD COLUMN role_id VARCHAR(64)"))
+                logger.info("Migration: added accounts.role_id")
+            if "role_tags_json" not in account_columns:
+                conn.execute(text("ALTER TABLE accounts ADD COLUMN role_tags_json TEXT"))
+                logger.info("Migration: added accounts.role_tags_json")
+
         if "execution_logs" in table_names:
             columns = {col["name"] for col in inspector.get_columns("execution_logs")}
             execution_log_columns = {
@@ -63,6 +118,19 @@ def run_migrations() -> None:
                     logger.info("Migration: added execution_logs.%s", col_name)
 
     _migrate_ai_settings_to_llm_models()
+    _seed_skill_templates()
+
+
+def _seed_skill_templates() -> None:
+    from app.services.skill_seed import seed_skill_templates
+
+    db = SessionLocal()
+    try:
+        count = seed_skill_templates(db)
+        if count:
+            logger.info("Migration: seeded %s skill role templates", count)
+    finally:
+        db.close()
 
 
 def _migrate_ai_settings_to_llm_models() -> None:

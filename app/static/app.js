@@ -29,6 +29,245 @@ document.querySelectorAll(".nav").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
 
+const bulkState = {
+  accounts: new Set(),
+  packages: new Set(),
+  llm: new Set(),
+  queue: new Set(),
+};
+
+function bulkCheckbox(scope, id) {
+  const checked = bulkState[scope].has(id);
+  return `<div class="row-check-cell"><label class="row-check"><input type="checkbox" class="bulk-check" data-bulk-scope="${scope}" data-bulk-id="${id}" ${checked ? "checked" : ""} /></label></div>`;
+}
+
+function bulkSelectAllCheckbox(scope) {
+  return `<div class="row-check-cell"><label class="row-check" title="全选本页"><input type="checkbox" class="bulk-check-all" data-bulk-scope="${scope}" /></label></div>`;
+}
+
+function getBulkActions(scope) {
+  const defs = {
+    accounts: [
+      {
+        action: "enable",
+        label: "启用",
+        url: "/api/accounts/bulk",
+        confirm: "将 {n} 个账号设为 PENDING_LOGIN（需重新登录）？",
+        refresh: refreshAccounts,
+      },
+      {
+        action: "disable",
+        label: "停用",
+        url: "/api/accounts/bulk",
+        confirm: "停用 {n} 个账号？",
+        refresh: refreshAccounts,
+      },
+      {
+        action: "set_role",
+        label: "设置角色",
+        url: "/api/accounts/bulk",
+        confirm: "为 {n} 个账号设置角色？",
+        needsRolePick: true,
+        refresh: refreshAccounts,
+      },
+      {
+        action: "delete",
+        label: "删除",
+        url: "/api/accounts/bulk",
+        danger: true,
+        confirm: "删除 {n} 个账号记录？Profile 文件夹将保留。",
+        refresh: refreshAccounts,
+      },
+    ],
+    packages: [
+      {
+        action: "enqueue",
+        label: "入队",
+        url: "/api/content/variants/bulk",
+        confirm: "为 {n} 个内容包创建发布任务？",
+        refresh: async () => {
+          await refreshContent();
+          refreshQueue();
+          refreshDashboard();
+        },
+      },
+      {
+        action: "delete",
+        label: "删除",
+        url: "/api/content/variants/bulk",
+        danger: true,
+        confirm: "删除 {n} 个 DRAFT 内容包？",
+        refresh: refreshContent,
+      },
+    ],
+    llm: [
+      { action: "enable", label: "启用", url: "/api/llm/models/bulk", refresh: refreshLlmModels },
+      { action: "disable", label: "停用", url: "/api/llm/models/bulk", refresh: refreshLlmModels },
+      {
+        action: "delete",
+        label: "删除",
+        url: "/api/llm/models/bulk",
+        danger: true,
+        confirm: "删除 {n} 个 LLM 配置？",
+        refresh: refreshLlmModels,
+      },
+    ],
+    queue: [
+      {
+        action: "cancel",
+        label: "取消",
+        url: "/api/jobs/bulk-actions",
+        confirm: "取消 {n} 个任务？",
+        refresh: async () => {
+          await refreshQueue();
+          refreshDashboard();
+        },
+      },
+      {
+        action: "retry",
+        label: "重试",
+        url: "/api/jobs/bulk-actions",
+        confirm: "原内容重试 {n} 个任务？",
+        refresh: async () => {
+          await refreshQueue();
+          refreshDashboard();
+        },
+      },
+    ],
+  };
+  return defs[scope] || [];
+}
+
+function syncBulkSelectAll(scope, container) {
+  const pageIds = Array.from(
+    container.querySelectorAll(`.bulk-check[data-bulk-scope="${scope}"]`)
+  ).map((el) => Number(el.dataset.bulkId));
+  const selectAll = container.querySelector(`.bulk-check-all[data-bulk-scope="${scope}"]`);
+  if (!selectAll || pageIds.length === 0) return;
+  const allSelected = pageIds.every((id) => bulkState[scope].has(id));
+  const someSelected = pageIds.some((id) => bulkState[scope].has(id));
+  selectAll.checked = allSelected;
+  selectAll.indeterminate = !allSelected && someSelected;
+}
+
+function renderBulkBar(scope, anchorEl, actions) {
+  const barId = `${scope}-bulk-bar`;
+  let bar = document.getElementById(barId);
+  if (!bar && anchorEl?.parentNode) {
+    bar = document.createElement("div");
+    bar.id = barId;
+    bar.className = "bulk-bar";
+    bar.hidden = true;
+    anchorEl.parentNode.insertBefore(bar, anchorEl);
+  }
+  if (!bar) return;
+  const count = bulkState[scope].size;
+  if (count === 0) {
+    bar.hidden = true;
+    bar.innerHTML = "";
+    return;
+  }
+  bar.hidden = false;
+  bar.innerHTML = `
+    <span class="bulk-count">已选 ${count}</span>
+    <div class="bulk-actions">
+      ${actions
+        .map(
+          (a) =>
+            `<button type="button" class="${a.danger ? "danger" : ""}" data-bulk-run="${scope}" data-bulk-action="${a.action}">${escapeHtml(a.label)}</button>`
+        )
+        .join("")}
+      <button type="button" data-bulk-clear="${scope}">清空</button>
+    </div>`;
+  bar.querySelectorAll(`[data-bulk-run="${scope}"]`).forEach((btn) => {
+    btn.onclick = () => {
+      const config = actions.find((a) => a.action === btn.dataset.bulkAction);
+      runBulkAction(scope, config).catch((e) => alert(e.message));
+    };
+  });
+  const clearBtn = bar.querySelector(`[data-bulk-clear="${scope}"]`);
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      bulkState[scope].clear();
+      rerenderBulkScope(scope);
+    };
+  }
+}
+
+async function runBulkAction(scope, config) {
+  const ids = Array.from(bulkState[scope]);
+  if (!ids.length || !config) return;
+  const msg = (config.confirm || `确认对 ${ids.length} 项执行「${config.label}」？`).replace(
+    "{n}",
+    String(ids.length)
+  );
+  if (!confirm(msg)) return;
+  let role_id;
+  let replace_skill = false;
+  if (config.needsRolePick) {
+    const options = (cachedSkillRoles || [])
+      .map((r) => `${r.id} (${r.display_name})`)
+      .join("\n");
+    role_id = prompt(`输入角色 ID：\n${options}`);
+    if (!role_id) return;
+    role_id = role_id.trim();
+    replace_skill = confirm("是否用新模板覆盖已手动修改的 skill？取消则仅改 role_id。");
+  }
+  const result = await api(config.url, {
+    method: "POST",
+    body: JSON.stringify({
+      ids,
+      action: config.action,
+      ...(role_id ? { role_id, replace_skill } : {}),
+    }),
+  });
+  const ok = result.succeeded?.length || 0;
+  const fail = result.failed?.length || 0;
+  let message = `成功 ${ok}，失败 ${fail}`;
+  if (fail) {
+    message += "\n\n" + result.failed.map((f) => `#${f.id}: ${f.detail}`).join("\n");
+  }
+  alert(message);
+  bulkState[scope].clear();
+  if (config.refresh) await config.refresh();
+}
+
+function wireBulkChecks(scope, container) {
+  container.querySelectorAll(`.bulk-check[data-bulk-scope="${scope}"]`).forEach((el) => {
+    el.onchange = () => {
+      const id = Number(el.dataset.bulkId);
+      if (el.checked) bulkState[scope].add(id);
+      else bulkState[scope].delete(id);
+      syncBulkSelectAll(scope, container);
+      renderBulkBar(scope, container, getBulkActions(scope));
+    };
+  });
+  const selectAll = container.querySelector(`.bulk-check-all[data-bulk-scope="${scope}"]`);
+  if (selectAll) {
+    selectAll.onchange = () => {
+      const pageIds = Array.from(
+        container.querySelectorAll(`.bulk-check[data-bulk-scope="${scope}"]`)
+      ).map((el) => Number(el.dataset.bulkId));
+      if (selectAll.checked) pageIds.forEach((id) => bulkState[scope].add(id));
+      else pageIds.forEach((id) => bulkState[scope].delete(id));
+      container.querySelectorAll(`.bulk-check[data-bulk-scope="${scope}"]`).forEach((el) => {
+        el.checked = bulkState[scope].has(Number(el.dataset.bulkId));
+      });
+      selectAll.indeterminate = false;
+      renderBulkBar(scope, container, getBulkActions(scope));
+    };
+  }
+  syncBulkSelectAll(scope, container);
+  renderBulkBar(scope, container, getBulkActions(scope));
+}
+
+function rerenderBulkScope(scope) {
+  if (scope === "accounts") refreshAccounts().catch(() => {});
+  else if (scope === "packages") loadPackagesTable(packagesPage).catch(() => {});
+  else if (scope === "llm") refreshLlmModels().catch(() => {});
+  else if (scope === "queue") refreshQueue().catch(() => {});
+}
+
 async function refreshReadiness() {
   const panel = document.getElementById("readiness-panel");
   if (!panel) return;
@@ -288,6 +527,177 @@ function packageLifecycle(variant, job) {
 
 let platformCatalog = [];
 let cachedAccounts = [];
+let cachedSkillRoles = [];
+let cachedSkillTags = [];
+
+function renderRoleSelectOptions(selectEl, selected = "") {
+  if (!selectEl) return;
+  const current = selected || selectEl.value || "";
+  selectEl.innerHTML =
+    `<option value="">默认（仅平台风格）</option>` +
+    cachedSkillRoles
+      .map(
+        (r) =>
+          `<option value="${escapeHtml(r.id)}" ${current === r.id ? "selected" : ""}>${escapeHtml(r.display_name)}</option>`
+      )
+      .join("");
+}
+
+function renderRoleTagCheckboxes(container, selected = [], inputName = "role_tag") {
+  if (!container) return;
+  const selectedSet = new Set(selected || []);
+  container.innerHTML = cachedSkillTags.length
+    ? cachedSkillTags
+        .map(
+          (tag) => `
+        <label>
+          <input type="checkbox" name="${inputName}" value="${escapeHtml(tag.id)}" ${selectedSet.has(tag.id) ? "checked" : ""} />
+          <span>${escapeHtml(tag.display_name)}</span>
+        </label>`
+        )
+        .join("")
+    : `<span class="hint">暂无副标签</span>`;
+}
+
+function collectCheckedRoleTags(container, inputName = "role_tag") {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll(`input[name="${inputName}"]:checked`)).map((el) => el.value);
+}
+
+async function loadSkillCatalog() {
+  try {
+    const [roles, tags] = await Promise.all([
+      api("/api/skills/roles"),
+      api("/api/skills/tags"),
+    ]);
+    cachedSkillRoles = roles;
+    cachedSkillTags = tags;
+    renderRoleSelectOptions(document.getElementById("account-role"));
+    renderRoleSelectOptions(document.getElementById("skill-role-select"));
+    renderRoleTagCheckboxes(document.getElementById("account-role-tags"));
+    renderRoleTagCheckboxes(document.getElementById("skill-role-tags-edit"));
+  } catch (err) {
+    console.error("loadSkillCatalog", err);
+  }
+}
+
+async function previewAccountSkill() {
+  const platform = document.getElementById("account-platform")?.value;
+  const roleId = document.getElementById("account-role")?.value;
+  const preview = document.getElementById("account-skill-preview");
+  const body = document.getElementById("account-skill-preview-body");
+  if (!preview || !body || !platform) {
+    preview?.setAttribute("hidden", "");
+    return;
+  }
+  const roleTags = collectCheckedRoleTags(document.getElementById("account-role-tags"));
+  const qs = new URLSearchParams({ platform });
+  roleTags.forEach((tag) => qs.append("role_tags", tag));
+  try {
+    const data = roleId
+      ? await api(`/api/skills/roles/${roleId}/preview?${qs.toString()}`)
+      : await api(`/api/skills/roles/product_recommender/preview?${qs.toString()}`).catch(() => null);
+    if (!roleId) {
+      const platformOnly = await api(`/api/platforms`).then((rows) => rows.find((p) => p.id === platform));
+      body.textContent = JSON.stringify(
+        {
+          persona: platformOnly?.default_persona || "",
+          skill: platformOnly?.default_skill || {},
+        },
+        null,
+        2
+      );
+    } else if (data) {
+      body.textContent = JSON.stringify(data, null, 2);
+    }
+    preview.hidden = false;
+  } catch (err) {
+    body.textContent = err.message;
+    preview.hidden = false;
+  }
+}
+
+async function refreshSkillRolesAdmin() {
+  const container = document.getElementById("skill-roles-admin");
+  if (!container) return;
+  if (!cachedSkillRoles.length) await loadSkillCatalog();
+  const activeId = document.getElementById("skill-role-edit-id")?.value || "";
+  container.innerHTML = cachedSkillRoles.length
+    ? cachedSkillRoles
+        .map(
+          (role) => `
+      <button type="button" class="skill-role-card${role.id === activeId ? " active" : ""}" data-edit-skill-role="${escapeHtml(role.id)}">
+        <div class="title">${escapeHtml(role.display_name)} <span class="meta">(${escapeHtml(role.id)})</span></div>
+        <div class="meta">${escapeHtml(role.description || "")}</div>
+      </button>`
+        )
+        .join("")
+    : `<div class="hint">暂无角色模板。</div>`;
+  container.querySelectorAll("[data-edit-skill-role]").forEach((btn) => {
+    btn.onclick = () => openSkillRoleEditor(btn.dataset.editSkillRole).catch((e) => alert(e.message));
+  });
+}
+
+function setSkillRoleEditorVisible(visible) {
+  const empty = document.getElementById("skill-role-editor-empty");
+  const body = document.getElementById("skill-role-editor-body");
+  if (empty) empty.hidden = visible;
+  if (body) body.hidden = !visible;
+}
+
+async function loadSkillRoleOverlayEditor() {
+  const roleId = document.getElementById("skill-role-edit-id")?.value;
+  const platform = document.getElementById("skill-role-overlay-platform")?.value;
+  const overlayEl = document.getElementById("skill-role-overlay-json");
+  const sourceEl = document.getElementById("skill-overlay-source");
+  const previewBody = document.getElementById("skill-role-merged-preview-body");
+  if (!roleId || !platform || !overlayEl) return;
+
+  try {
+    const overlay = await api(`/api/skills/roles/${roleId}/overlays/${platform}`);
+    overlayEl.value = JSON.stringify(
+      {
+        skill: overlay.skill || {},
+        persona_suffix: overlay.persona_suffix || "",
+      },
+      null,
+      2
+    );
+    if (sourceEl) {
+      sourceEl.textContent = overlay.exists
+        ? `当前 Overlay 来源：${overlay.source}（平台 ${platform}）`
+        : `平台 ${platform} 尚无独立 Overlay，保存后会创建。`;
+    }
+
+    const previewPlatform = platform === "_default" ? "tiktok" : platform;
+    const preview = await api(
+      `/api/skills/roles/${roleId}/preview?platform=${encodeURIComponent(previewPlatform)}`
+    );
+    if (previewBody) {
+      previewBody.textContent = JSON.stringify(preview, null, 2);
+    }
+  } catch (err) {
+    if (sourceEl) sourceEl.textContent = err.message;
+    if (previewBody) previewBody.textContent = err.message;
+  }
+}
+
+async function openSkillRoleEditor(roleId) {
+  const role = await api(`/api/skills/roles/${roleId}`);
+  setSkillRoleEditorVisible(true);
+  document.getElementById("skill-role-edit-id").value = role.id;
+  document.getElementById("skill-role-display-name").value = role.display_name || "";
+  document.getElementById("skill-role-description").value = role.description || "";
+  document.getElementById("skill-role-persona").value = role.default_persona || "";
+  document.getElementById("skill-role-skill-json").value = JSON.stringify(role.skill || {}, null, 2);
+  document.getElementById("skill-role-editor-title").textContent = `编辑角色：${role.display_name}`;
+  const platformSelect = document.getElementById("skill-role-overlay-platform");
+  if (platformSelect && !platformSelect.value) platformSelect.value = "bilibili";
+  document.querySelectorAll(".skill-role-card").forEach((el) => {
+    el.classList.toggle("active", el.dataset.editSkillRole === role.id);
+  });
+  await loadSkillRoleOverlayEditor();
+}
 let wizardStep = 1;
 let wizardAssetId = Number(sessionStorage.getItem("wizardAssetId") || 0) || null;
 let reviewVariants = [];
@@ -452,6 +862,112 @@ async function loadPlatforms() {
     throw new Error("Platform catalog is empty");
   }
   renderPlatformOptions("account-platform");
+  renderSkillOverlayPlatformOptions();
+  refreshPlatformsAdmin();
+}
+
+function renderSkillOverlayPlatformOptions() {
+  const select = document.getElementById("skill-role-overlay-platform");
+  if (!select) return;
+  const builtinIds = new Set(
+    platformCatalog.filter((p) => p.source !== "custom").map((p) => p.id)
+  );
+  const preferred = ["_default", "rednote", "douyin", "tiktok", "weibo", "twitter", "bilibili", "discord", "telegram", "linkedin", "threads"];
+  const ordered = [
+    "_default",
+    ...preferred.filter((id) => id !== "_default" && builtinIds.has(id)),
+    ...platformCatalog.map((p) => p.id).filter((id) => !preferred.includes(id)),
+  ];
+  const seen = new Set();
+  const options = ordered.filter((id) => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return id === "_default" || platformCatalog.some((p) => p.id === id);
+  });
+  select.innerHTML = options
+    .map((id) => {
+      const meta = platformCatalog.find((p) => p.id === id);
+      const label = id === "_default" ? "_default" : meta?.display_name || id;
+      return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+function closePlatformEditor() {
+  document.getElementById("platform-editor").hidden = true;
+  document.getElementById("platform-form")?.reset();
+  document.getElementById("platform-id").disabled = false;
+}
+
+function openPlatformEditor(platform) {
+  document.getElementById("platform-editor").hidden = false;
+  document.getElementById("platform-editor-title").textContent = platform
+    ? `编辑平台：${platform.display_name}`
+    : "添加自定义平台";
+  const idInput = document.getElementById("platform-id");
+  idInput.value = platform?.id || "";
+  idInput.disabled = Boolean(platform);
+  document.getElementById("platform-display-name").value = platform?.display_name || "";
+  document.getElementById("platform-region").value = platform?.region || "global";
+  document.getElementById("platform-home-url").value = platform?.home_url || "";
+  document.getElementById("platform-login-url").value = platform?.login_url || "";
+  document.getElementById("platform-upload-url").value = platform?.upload_url || "";
+  document.getElementById("platform-media-types").value = (platform?.media_types || ["text"]).join(",");
+  document.getElementById("platform-persona").value = platform?.default_persona || "";
+  document.getElementById("platform-skill-json").value = JSON.stringify(
+    platform?.default_skill || { tone: "neutral", language: "en" },
+    null,
+    2
+  );
+  document.getElementById("platform-enabled").checked = platform?.enabled !== false;
+}
+
+async function refreshPlatformsAdmin() {
+  const container = document.getElementById("platforms-list");
+  if (!container) return;
+  const sorted = [...platformCatalog].sort((a, b) => {
+    if (a.source !== b.source) return a.source === "builtin" ? -1 : 1;
+    return (a.display_name || a.id).localeCompare(b.display_name || b.id);
+  });
+  const tiles = sorted
+    .map(
+      (p) => `
+    <article class="platform-tile">
+      <strong>${escapeHtml(p.display_name)}</strong>
+      <span class="meta">${escapeHtml(p.id)} · ${p.source === "custom" ? "自定义" : "内置"}${p.enabled ? "" : " · 已禁用"}</span>
+      ${
+        p.source === "custom"
+          ? `<div class="actions">
+              <button type="button" data-platform-edit="${escapeHtml(p.id)}">编辑</button>
+              <button type="button" class="danger" data-platform-delete="${escapeHtml(p.id)}">删除</button>
+            </div>`
+          : `<span class="meta">只读</span>`
+      }
+    </article>`
+    )
+    .join("");
+  container.innerHTML =
+    tiles +
+    `<button type="button" class="platform-tile platform-tile-add" id="btn-platform-add">+ 添加自定义平台</button>`;
+
+  document.getElementById("btn-platform-add").onclick = () => openPlatformEditor();
+  container.querySelectorAll("[data-platform-edit]").forEach((btn) => {
+    btn.onclick = () => {
+      const platform = platformCatalog.find((p) => p.id === btn.dataset.platformEdit);
+      if (platform) openPlatformEditor(platform);
+    };
+  });
+  container.querySelectorAll("[data-platform-delete]").forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm(`删除自定义平台 ${btn.dataset.platformDelete}？`)) return;
+      try {
+        await api(`/api/platforms/${btn.dataset.platformDelete}`, { method: "DELETE" });
+        await loadPlatforms();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+  });
 }
 
 function showBootError(message) {
@@ -463,12 +979,26 @@ function showBootError(message) {
 
 async function refreshAccounts() {
   cachedAccounts = await api("/api/accounts");
-  document.getElementById("accounts-list").innerHTML = cachedAccounts
-    .map(
-      (a) => `
-      <div class="row">
-        <div>#${a.id} ${a.account_name}</div>
+  const container = document.getElementById("accounts-list");
+  const header = `
+    <div class="row accounts-head">
+      ${bulkSelectAllCheckbox("accounts")}
+      <div>ID / Name</div>
+      <div>Platform</div>
+      <div>Role</div>
+      <div>Status</div>
+      <div>Actions</div>
+    </div>`;
+  container.innerHTML =
+    header +
+    (cachedAccounts
+      .map(
+        (a) => `
+      <div class="row accounts-row">
+        ${bulkCheckbox("accounts", a.id)}
+        <div>#${a.id} ${escapeHtml(a.account_name)}</div>
         <div>${platformLabel(a.platform)}</div>
+        <div>${escapeHtml(a.role_display_name || "-")}</div>
         <div>${a.status}</div>
         <div class="actions">
           <button type="button" data-skill="${a.id}">Edit skill</button>
@@ -476,8 +1006,10 @@ async function refreshAccounts() {
           <button type="button" class="danger" data-delete="${a.id}">Delete</button>
         </div>
       </div>`
-    )
-    .join("") || `<div class="hint">No accounts yet.</div>`;
+      )
+      .join("") || `<div class="hint">No accounts yet.</div>`);
+
+  wireBulkChecks("accounts", container);
 
   if (wizardStep === 2) {
     renderWizardAccountPicks();
@@ -657,8 +1189,11 @@ function openSkillEditor(accountId) {
   const account = cachedAccounts.find((a) => a.id === accountId);
   if (!account) return;
   const skill = account.skill || {};
+  const template = account.template_skill || {};
   document.getElementById("skill-editor").hidden = false;
   document.getElementById("skill-account-id").value = account.id;
+  renderRoleSelectOptions(document.getElementById("skill-role-select"), account.role_id || "");
+  renderRoleTagCheckboxes(document.getElementById("skill-role-tags-edit"), account.role_tags || [], "skill_role_tag");
   document.getElementById("skill-persona").value = account.persona || "";
   document.getElementById("skill-tone").value = skill.tone || "";
   document.getElementById("skill-audience").value = skill.audience || "";
@@ -666,24 +1201,64 @@ function openSkillEditor(accountId) {
   document.getElementById("skill-cta").value = skill.cta || "";
   document.getElementById("skill-taboos").value = (skill.taboos || []).join(", ");
   document.getElementById("skill-extra").value = skill.extra_prompt || "";
+  const hint = document.getElementById("skill-template-hint");
+  if (hint) {
+    const overrides = ["tone", "audience", "language", "cta", "extra_prompt"].filter((field) => {
+      const resolved = skill[field];
+      const base = template[field];
+      return resolved && base && resolved !== base;
+    });
+    hint.textContent = account.role_display_name
+      ? `角色：${account.role_display_name}。${overrides.length ? `已覆盖字段：${overrides.join(", ")}` : "当前使用模板默认值（未手改 skill 覆盖）"}`
+      : "未绑定角色，使用平台默认 skill。";
+  }
 }
+
+document.getElementById("btn-reset-skill-template")?.addEventListener("click", async () => {
+  const accountId = Number(document.getElementById("skill-account-id").value);
+  if (!accountId) return;
+  if (!confirm("清除手改 skill 覆盖，恢复为角色×平台模板？")) return;
+  try {
+    await api(`/api/accounts/${accountId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ clear_skill_override: true }),
+    });
+    await refreshAccounts();
+    openSkillEditor(accountId);
+    alert("已重置为模板。");
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 document.getElementById("skill-form").onsubmit = async (e) => {
   e.preventDefault();
   const accountId = Number(document.getElementById("skill-account-id").value);
   const taboosRaw = document.getElementById("skill-taboos").value;
+  const newRoleId = document.getElementById("skill-role-select").value || null;
+  const account = cachedAccounts.find((a) => a.id === accountId);
+  let replaceSkill = false;
+  if (account && newRoleId && newRoleId !== (account.role_id || "")) {
+    replaceSkill = confirm("更换角色：是否用新模板覆盖已修改的 skill 字段？取消则仅更新 role_id。");
+  }
   const payload = {
     persona: document.getElementById("skill-persona").value || null,
     language: document.getElementById("skill-language").value || null,
-    skill: {
+    role_id: newRoleId,
+    role_tags: collectCheckedRoleTags(document.getElementById("skill-role-tags-edit"), "skill_role_tag"),
+  };
+  if (replaceSkill) {
+    payload.clear_skill_override = true;
+  } else {
+    payload.skill = {
       tone: document.getElementById("skill-tone").value || null,
       audience: document.getElementById("skill-audience").value || null,
       language: document.getElementById("skill-language").value || null,
       cta: document.getElementById("skill-cta").value || null,
       taboos: taboosRaw ? taboosRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
       extra_prompt: document.getElementById("skill-extra").value || null,
-    },
-  };
+    };
+  }
   try {
     await api(`/api/accounts/${accountId}`, { method: "PATCH", body: JSON.stringify(payload) });
     await refreshAccounts();
@@ -742,6 +1317,7 @@ function renderPackagesTable(resp) {
   } else {
     const header = `
       <div class="row packages-head">
+        ${bulkSelectAllCheckbox("packages")}
         <div>ID</div>
         <div>Asset</div>
         <div>Account</div>
@@ -759,6 +1335,7 @@ function renderPackagesTable(resp) {
         const canDelete = v.status === "DRAFT";
         return `
         <div class="row packages-row">
+          ${bulkCheckbox("packages", v.id)}
           <div>#${v.id}</div>
           <div>#${v.asset_id}</div>
           <div>${account}</div>
@@ -803,6 +1380,7 @@ function renderPackagesTable(resp) {
   container.querySelectorAll("[data-delete-package]").forEach((btn) => {
     btn.onclick = () => deletePackageVariant(Number(btn.dataset.deletePackage)).catch((e) => alert(e.message));
   });
+  wireBulkChecks("packages", container);
 }
 
 async function loadPackagesTable(page = 1) {
@@ -1266,10 +1844,24 @@ function wireJobActions(root = document) {
 
 async function refreshQueue() {
   const jobs = await api("/api/jobs");
-  document.getElementById("queue-list").innerHTML = jobs
-    .map(
-      (j) => `
-      <div class="row">
+  const container = document.getElementById("queue-list");
+  const header = `
+    <div class="row queue-head">
+      ${bulkSelectAllCheckbox("queue")}
+      <div>Job</div>
+      <div>Package</div>
+      <div>Platform</div>
+      <div>Status</div>
+      <div>Scheduled</div>
+      <div>Actions</div>
+    </div>`;
+  container.innerHTML =
+    header +
+    (jobs
+      .map(
+        (j) => `
+      <div class="row queue-row">
+        ${bulkCheckbox("queue", j.id)}
         <div>Job #${j.id}</div>
         <div>包 #${j.content_variant_id}</div>
         <div>${j.platform || "-"}</div>
@@ -1279,10 +1871,11 @@ async function refreshQueue() {
           ${jobActionButtons(j)}
         </div>
       </div>`
-    )
-    .join("") || `<div class="hint">Queue is empty.</div>`;
+      )
+      .join("") || `<div class="hint">Queue is empty.</div>`);
 
-  wireJobActions(document.getElementById("queue-list"));
+  wireJobActions(container);
+  wireBulkChecks("queue", container);
 }
 
 function formatTokens(value) {
@@ -1475,6 +2068,7 @@ async function refreshLlmModels() {
     .map(
       (m) => `
       <article class="pool-card ${m.enabled ? "" : "disabled"}">
+        ${bulkCheckbox("llm", m.id)}
         <div>
           <div class="title">${escapeHtml(m.alias)}
             <span class="pool-badge ${m.enabled ? "on" : "off"}">${m.enabled ? "启用" : "停用"}</span>
@@ -1536,10 +2130,51 @@ async function refreshLlmModels() {
       refreshLlmModels();
     };
   });
+  wireBulkChecks("llm", container);
 }
 
 document.getElementById("btn-llm-add").onclick = () => openLlmEditor();
 document.getElementById("btn-llm-cancel").onclick = () => closeLlmEditor();
+
+document.getElementById("btn-platform-cancel")?.addEventListener("click", () => closePlatformEditor());
+document.getElementById("platform-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const editId = document.getElementById("platform-id").value.trim();
+  let defaultSkill = {};
+  try {
+    defaultSkill = JSON.parse(document.getElementById("platform-skill-json").value || "{}");
+  } catch {
+    alert("Default skill JSON 格式错误");
+    return;
+  }
+  const mediaRaw = document.getElementById("platform-media-types").value || "text";
+  const payload = {
+    display_name: document.getElementById("platform-display-name").value,
+    region: document.getElementById("platform-region").value || "global",
+    home_url: document.getElementById("platform-home-url").value,
+    login_url: document.getElementById("platform-login-url").value || null,
+    upload_url: document.getElementById("platform-upload-url").value || null,
+    enabled: document.getElementById("platform-enabled").checked,
+    media_types: mediaRaw.split(",").map((s) => s.trim()).filter(Boolean),
+    default_persona: document.getElementById("platform-persona").value || null,
+    default_skill: defaultSkill,
+  };
+  const isEdit = document.getElementById("platform-id").disabled;
+  try {
+    if (isEdit) {
+      await api(`/api/platforms/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/platforms", {
+        method: "POST",
+        body: JSON.stringify({ id: editId, ...payload }),
+      });
+    }
+    closePlatformEditor();
+    await loadPlatforms();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 document.getElementById("llm-model-form").onsubmit = async (e) => {
   e.preventDefault();
@@ -1577,15 +2212,94 @@ document.getElementById("llm-model-form").onsubmit = async (e) => {
 document.getElementById("account-form").onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
+  const roleId = fd.get("role_id");
+  const payload = {
+    platform: fd.get("platform"),
+    account_name: fd.get("account_name"),
+    role_id: roleId || null,
+    role_tags: collectCheckedRoleTags(document.getElementById("account-role-tags")),
+  };
   try {
-    await api("/api/accounts", { method: "POST", body: JSON.stringify(Object.fromEntries(fd.entries())) });
+    await api("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
     e.target.reset();
     renderPlatformOptions("account-platform");
+    renderRoleSelectOptions(document.getElementById("account-role"));
+    renderRoleTagCheckboxes(document.getElementById("account-role-tags"));
     refreshAccounts();
   } catch (err) {
     alert(err.message);
   }
 };
+
+document.getElementById("account-platform")?.addEventListener("change", () => {
+  previewAccountSkill().catch(() => {});
+});
+document.getElementById("account-role")?.addEventListener("change", () => {
+  previewAccountSkill().catch(() => {});
+});
+document.getElementById("account-role-tags")?.addEventListener("change", () => {
+  previewAccountSkill().catch(() => {});
+});
+
+document.getElementById("skill-role-admin-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const roleId = document.getElementById("skill-role-edit-id").value;
+  let skill;
+  try {
+    skill = JSON.parse(document.getElementById("skill-role-skill-json").value || "{}");
+  } catch (err) {
+    alert("Skill JSON 无效");
+    return;
+  }
+  try {
+    await api(`/api/skills/roles/${roleId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        display_name: document.getElementById("skill-role-display-name").value,
+        description: document.getElementById("skill-role-description").value,
+        default_persona: document.getElementById("skill-role-persona").value,
+        skill,
+      }),
+    });
+    await loadSkillCatalog();
+    await refreshSkillRolesAdmin();
+    alert("角色模板已保存到数据库。");
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("btn-save-skill-overlay")?.addEventListener("click", async () => {
+  const roleId = document.getElementById("skill-role-edit-id").value;
+  const platform = document.getElementById("skill-role-overlay-platform").value;
+  let payload;
+  try {
+    payload = JSON.parse(document.getElementById("skill-role-overlay-json").value || "{}");
+  } catch (err) {
+    alert("Overlay JSON 无效");
+    return;
+  }
+  try {
+    await api(`/api/skills/roles/${roleId}/overlays/${platform}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    await loadSkillRoleOverlayEditor();
+    alert(`平台 ${platform} Overlay 已保存。`);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById("skill-role-overlay-platform")?.addEventListener("change", () => {
+  loadSkillRoleOverlayEditor().catch((e) => alert(e.message));
+});
+
+document.getElementById("btn-skill-role-cancel")?.addEventListener("click", () => {
+  setSkillRoleEditorVisible(false);
+  document.getElementById("skill-role-edit-id").value = "";
+  document.querySelectorAll(".skill-role-card").forEach((el) => el.classList.remove("active"));
+});
 
 document.getElementById("job-form").onsubmit = async (e) => {
   e.preventDefault();
@@ -1697,6 +2411,7 @@ async function init() {
     const health = await api("/health");
     document.getElementById("app-version").textContent = `v${health.version}`;
     await loadPlatforms();
+    await loadSkillCatalog();
     await Promise.all([
       refreshReadiness(),
       refreshDashboard(),
@@ -1705,6 +2420,7 @@ async function init() {
       refreshQueue(),
       refreshWorkerBar(),
       refreshLlmModels(),
+      refreshSkillRolesAdmin(),
     ]);
     await restoreWizardSession();
     connectEventStream();

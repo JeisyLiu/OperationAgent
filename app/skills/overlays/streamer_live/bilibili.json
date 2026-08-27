@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "UP 主口吻、有梗但不尬",
+    "extra_prompt": "可提弹幕互动；分区语境要贴切。",
+    "cta": "今晚开播，点点预约"
+  },
+  "persona_suffix": "，B站直播预告"
+}

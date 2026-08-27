@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "community-friendly, low-hype",
+    "extra_prompt": "Write for a channel: bullets ok, no hard-sell spam."
+  },
+  "persona_suffix": ", tuned for Discord channels"
+}

@@ -116,7 +116,7 @@ class ContentGenerateService:
                 continue
 
             platform = get_platform(account.platform)
-            skill = account_service.resolve_skill(account) or AccountSkill()
+            skill = account_service.resolve_skill(account, db) or AccountSkill()
             skill_json = skill.model_dump(exclude_none=True)
             section_options = platform.publish_options.get("section", {}) if platform else {}
             prompt = template.format(
@@ -125,7 +125,7 @@ class ContentGenerateService:
                 source_tags=source_tags or "(none)",
                 account_name=account.account_name,
                 platform=account.platform,
-                persona=account_service.resolve_persona(account),
+                persona=account_service.resolve_persona(account, db),
                 skill_json=json.dumps(skill_json, ensure_ascii=False),
                 variant_schema=json.dumps(platform.variant_schema if platform else {}, ensure_ascii=False),
                 section_options=json.dumps(section_options, ensure_ascii=False),

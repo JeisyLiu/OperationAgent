@@ -1,0 +1,85 @@
+{
+  "tags": [
+    {
+      "id": "digital",
+      "display_name": "数码科技",
+      "skill": {
+        "topics": ["数码", "软件", "硬件", "效率工具"],
+        "taboos": ["虚假跑分", "未验证爆料"]
+      }
+    },
+    {
+      "id": "beauty",
+      "display_name": "美妆护肤",
+      "skill": {
+        "topics": ["护肤", "彩妆", "成分"],
+        "taboos": ["医疗功效宣称", "绝对化变美承诺"]
+      }
+    },
+    {
+      "id": "soft_sell",
+      "display_name": "软种草",
+      "skill": {
+        "tone": "真诚分享、弱化推销感",
+        "extra_prompt": "避免硬广词汇，用体验叙事代替卖点堆砌。"
+      }
+    },
+    {
+      "id": "high_compliance",
+      "display_name": "高合规",
+      "skill": {
+        "claim_policy": "evidence_required",
+        "taboos": ["投资建议", "医疗诊断", "夸大收益", "绝对化用语"],
+        "disclaimer": "内容仅供参考，不构成专业建议"
+      }
+    },
+    {
+      "id": "gaming",
+      "display_name": "游戏",
+      "skill": {
+        "topics": ["新游", "攻略", "电竞", "版本更新"],
+        "taboos": ["外挂宣传", "未公开内测泄露"]
+      }
+    },
+    {
+      "id": "saas",
+      "display_name": "SaaS",
+      "skill": {
+        "topics": ["效率", "协作", "自动化", "工作流"],
+        "taboos": ["夸大 ROI", "虚构客户案例"]
+      }
+    },
+    {
+      "id": "b2b",
+      "display_name": "B2B",
+      "skill": {
+        "topics": ["解决方案", "行业案例", "ROI", "采购决策"],
+        "taboos": ["未授权客户 logo", "虚假中标信息"]
+      }
+    },
+    {
+      "id": "finance",
+      "display_name": "金融",
+      "skill": {
+        "topics": ["市场解读", "理财常识", "政策影响"],
+        "taboos": ["保本承诺", "荐股喊单", "未披露风险"]
+      }
+    },
+    {
+      "id": "food",
+      "display_name": "美食",
+      "skill": {
+        "topics": ["探店", "食谱", "食材", "地方风味"],
+        "taboos": ["虚假探店", "未标注赞助"]
+      }
+    },
+    {
+      "id": "travel",
+      "display_name": "旅行",
+      "skill": {
+        "topics": ["攻略", "目的地", "住宿", "行程规划"],
+        "taboos": ["危险地点误导", "未核实签证政策"]
+      }
+    }
+  ]
+}

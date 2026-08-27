@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "professional community builder",
+    "extra_prompt": "Longer caption ok: hook, 2-3 paragraphs, clear takeaway."
+  },
+  "persona_suffix": "，LinkedIn 社群运营"
+}

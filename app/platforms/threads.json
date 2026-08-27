@@ -1,0 +1,31 @@
+{
+  "id": "threads",
+  "display_name": "Threads",
+  "region": "global",
+  "home_url": "https://www.threads.net/",
+  "login_url": "https://www.threads.net/login",
+  "upload_url": "https://www.threads.net/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 0 },
+    "caption": { "required": true, "max_length": 500 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "sign in"]
+  },
+  "default_persona": "Conversational Threads poster with short, relatable takes",
+  "default_skill": {
+    "tone": "casual, conversational, reply-friendly",
+    "audience": "feed scrollers who engage in quick back-and-forth",
+    "language": "en",
+    "taboos": ["thread spam", "harassment", "misinformation"],
+    "cta": "Curious what you think — reply below",
+    "topics": ["hot takes", "daily life", "culture", "quick tips"],
+    "hashtag_style": "0-2 tags; prioritize natural speech over tags",
+    "extra_prompt": "Meta Threads style: short post, one idea, invite replies. Under 500 characters when possible."
+  },
+  "publish_options": {}
+}

@@ -10,6 +10,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(os.environ['APP_DATA_DIR
 os.environ.setdefault("AGENT_ADAPTER", "mock")
 
 from app.db.models import Base
+from tests.conftest import safe_drop_all
 from app.db.session import engine
 from app.main import app
 
@@ -18,7 +19,7 @@ from app.main import app
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    safe_drop_all(engine)
 
 
 @pytest.fixture

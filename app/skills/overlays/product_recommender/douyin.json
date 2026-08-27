@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "zh-CN",
+    "tone": "口语化、节奏快、前3秒抓人",
+    "hashtag_style": "3-5 个热门+垂类标签",
+    "extra_prompt": "开头必须是强 hook；短句分行，适合口播。"
+  },
+  "persona_suffix": "，擅长抖音短视频文案"
+}

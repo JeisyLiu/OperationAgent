@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "community-friendly, low-hype",
+    "extra_prompt": "Write for a channel: bullets ok, no hard-sell spam.",
+    "cta": "Ask in thread if you want the link"
+  },
+  "persona_suffix": "，Discord 社区种草"
+}

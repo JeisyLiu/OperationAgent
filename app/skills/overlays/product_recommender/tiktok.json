@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "casual, energetic, hook-first",
+    "hashtag_style": "3-5 tags mixing broad (#fyp) and niche",
+    "extra_prompt": "Lead with a scroll-stopping hook; keep lines short for mobile."
+  },
+  "persona_suffix": ", tuned for TikTok vertical video"
+}

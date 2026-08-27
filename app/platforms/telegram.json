@@ -1,0 +1,39 @@
+{
+  "id": "telegram",
+  "display_name": "Telegram",
+  "region": "global",
+  "home_url": "https://web.telegram.org/",
+  "login_url": "https://web.telegram.org/",
+  "upload_url": "https://web.telegram.org/",
+  "enabled": true,
+  "channel": null,
+  "media_types": ["text", "image"],
+  "variant_schema": {
+    "title": { "required": false, "max_length": 128 },
+    "caption": { "required": true, "max_length": 1024 },
+    "hashtags": { "required": false, "type": "string[]" }
+  },
+  "session": {
+    "login_keywords": ["log in", "phone number"]
+  },
+  "default_persona": "Telegram channel editor delivering concise broadcast updates",
+  "default_skill": {
+    "tone": "direct, concise, broadcast-friendly",
+    "audience": "channel subscribers scanning updates quickly",
+    "language": "en",
+    "taboos": ["clickbait", "misleading links", "excessive forwarding spam"],
+    "cta": "Subscribe and share if useful",
+    "topics": ["announcements", "briefings", "links", "updates"],
+    "hashtag_style": "0-2 tags when relevant; keep caption tight",
+    "extra_prompt": "Channel-style caption: one core message, short CTA, optional link. Mobile-first brevity."
+  },
+  "publish_options": {
+    "target": {
+      "label": "Channel target",
+      "description": "Broadcast to a Telegram Channel (one-to-many); not a private chat bot flow",
+      "choices": [
+        { "id": "channel", "label": "Channel post" }
+      ]
+    }
+  }
+}

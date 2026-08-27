@@ -12,6 +12,12 @@ class AccountSkill(BaseModel):
     topics: list[str] = Field(default_factory=list)
     hashtag_style: str | None = None
     extra_prompt: str | None = None
+    content_goals: list[str] = Field(default_factory=list)
+    claim_policy: str | None = None
+    structure: list[str] = Field(default_factory=list)
+    evidence_style: str | None = None
+    disclaimer: str | None = None
+    interaction_style: str | None = None
 
 
 class AccountCreate(BaseModel):
@@ -20,6 +26,8 @@ class AccountCreate(BaseModel):
     persona: str | None = None
     language: str | None = None
     description: str | None = None
+    role_id: str | None = None
+    role_tags: list[str] = Field(default_factory=list)
     skill: AccountSkill | None = None
 
 
@@ -29,7 +37,10 @@ class AccountUpdate(BaseModel):
     language: str | None = None
     description: str | None = None
     status: str | None = None
+    role_id: str | None = None
+    role_tags: list[str] | None = None
     skill: AccountSkill | None = None
+    clear_skill_override: bool = False
 
 
 class AccountResponse(BaseModel):
@@ -40,7 +51,11 @@ class AccountResponse(BaseModel):
     persona: str | None = None
     language: str | None = None
     description: str | None = None
+    role_id: str | None = None
+    role_tags: list[str] = Field(default_factory=list)
+    role_display_name: str | None = None
     skill: AccountSkill | None = None
+    template_skill: AccountSkill | None = None
     status: str
     created_at: datetime
 

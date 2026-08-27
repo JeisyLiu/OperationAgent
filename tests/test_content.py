@@ -10,6 +10,7 @@ os.environ.setdefault("APP_DATA_DIR", tempfile.mkdtemp())
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(os.environ['APP_DATA_DIR']) / 'test.db'}")
 
 from app.db.models import Base
+from tests.conftest import safe_drop_all
 from app.db.session import SessionLocal, engine
 from app.main import app
 from app.services.content_service import content_service
@@ -19,7 +20,7 @@ from app.services.content_service import content_service
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    safe_drop_all(engine)
 
 
 @pytest.fixture

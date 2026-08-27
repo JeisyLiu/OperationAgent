@@ -1,0 +1,9 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "neutral, breaking-news style",
+    "hashtag_style": "0-2 relevant hashtags only",
+    "extra_prompt": "Respect character limits; one idea per post when possible."
+  },
+  "persona_suffix": ", optimized for X/Twitter"
+}

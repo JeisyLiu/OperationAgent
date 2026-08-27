@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "professional, minimal emoji",
+    "extra_prompt": "Longer caption ok: hook, 2-3 paragraphs, clear takeaway."
+  },
+  "persona_suffix": ", tuned for LinkedIn feed"
+}

@@ -1,0 +1,8 @@
+{
+  "skill": {
+    "language": "en",
+    "tone": "warm moderator, thread-friendly",
+    "extra_prompt": "Write for a channel: bullets ok, no hard-sell spam."
+  },
+  "persona_suffix": "，Discord 社群运营"
+}
